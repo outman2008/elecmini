@@ -245,4 +245,67 @@ ELECMINI_PACK_APP=test-app-s4 node pack/build.js --sku slim --target win32-x64 -
 
 # 差分契约（宿主若注入 ELECTRON_RUN_AS_NODE=1，run.js 已自动清除）
 node contract/run.js
+
+# Windows 安全加固+平台降级专项（22/22，非严格 + 严格两轮）
+node contract/win-check.js
+
+# 全套 CI（Windows 真机 E2E 已在 ci/check.sh 的 windows 分支启用）
+ELECMINI_RUST_TOOLCHAIN=stable-x86_64-pc-windows-msvc bash ci/check.sh
+```
+
+---
+
+## 六、v1.3 复验（2026-11-24 晚，拉取远端 11 个新提交后）
+
+远端 `main` 由 `99b6cc7` 快进到 `511a82a`（v1.3 工程化与安全加固，76 文件变更）。复验结论：**v1.3 新增能力在 Windows 真机全部通过，原有基线无回归**。
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| 快速单测（14 组） | ✅ 全过 | `ci/check.sh --quick` PASS=14 FAIL=0 |
+| 宿主重编译（新增安全加固） | ✅ | msvc release 1.35MB；`host/src/main.rs` 导航锚定 + IPC 来源校验已编入 |
+| 门禁真机探测 | ✅ L0 | `probe()` → `level=L0 engine=WebView2 version=133.0.3065.82 source=win_gate` |
+| 差分契约 | ✅ 42/42 MATCH | v1.3 从 38 增至 42 用例（新增 session 单例、未注册协议行为值） |
+| P1 / P2 E2E | ✅ EXIT=0 | IPC 往返、types、window 事件 / safeStorage、剪贴板、app:// 协议 |
+| S4 WebView2 能力 | ✅ 7/7 | 请求头注入 / CDP 命令+事件 / DevTools 能力 |
+| **v1.3 安全加固（新补专项）** | ✅ 22/22 | `contract/win-check.js` 两轮（非严格 + `ELECMINI_STRICT_NAV=1`） |
+| 全套 CI | ✅ PASS=21 FAIL=0 | `ci/check.sh`；3 项因本机 Rust 工具链缺 rustfmt/clippy/dlltool 组件 SKIP（GitHub runner 组件齐全仍真跑） |
+
+### 6.1 本次补充的 Windows 专项覆盖
+
+先前 v1.3 的 Windows 验证只有编译 + 单测（GitHub Actions 无 xvfb 导致 E2E 被跳过），安全加固仅靠 `util.rs` 的 2 个纯函数单测，**handler 接线从未在真机验证**。本次补齐：
+
+- 新增 `test-app-win/`：用两个非回环 IP 端口构造异源 A（锚点）/ B，先加载本地受信 origin（127.0.0.1），再跳 A 锚定，最后跳异源 B。
+- 新增 `contract/win-check.js`（22 断言，两轮）：
+  - **本地受信 origin IPC 正常**：证明安全策略未误伤 127.0.0.1 / app:// 页面；
+  - **锚定 origin A IPC 正常**：首次外部导航被锚定后放行；
+  - **异源识别**：两轮均出现 `[SECURITY] navigation blocked (untrusted origin)`；
+  - **非严格模式**：异源 B 导航放行，但 IPC 被丢弃（`[SECURITY] dropped IPC from untrusted origin`），B 的 `ping-B` 未到达主进程；
+  - **严格模式**（`ELECMINI_STRICT_NAV=1`）：异源 B 导航被阻断，B 页面脚本未执行（page-ready 只来自本地与 A）。
+- 顺带覆盖 Windows 平台降级：剪贴板 HTML 内存镜像（`<b>win-html</b>` 往返）、safeStorage 往返、`capturePage()` 返回空 dataURL（Windows 已知边界，如实断言）。
+
+### 6.2 CI 配置修正
+
+- `ci/check.sh`：新增 Windows 分支（`IS_WINDOWS`），真机跑门禁探测、差分契约、P1/P2 E2E、S4、安全专项；编译改用 `--features windows-gate --bins` 确保产出 `win_gate.exe`；加 `ELECMINI_RUST_TOOLCHAIN` 可选变量与 rustfmt/clippy 组件探测。
+- `.github/workflows/ci.yml`：Windows runner 增加 `npm --prefix test-app ci`（此前缺 electron.exe 导致差分契约无法运行）、上传检查报告；job 名由"编译+单测"改为"全套检查（Windows / WebView2 真机）"。
+
+### 6.3 仍存的边界（未变）
+
+- L1 Bootstrapper 真实安装需干净无 WebView2 虚机（本机已装 133，无法触发）。
+- L0 ≥95% 的 Go/No-Go 结论仍需生产遥测样本（当前 7 条本地样本，远低于 385）。
+- CDP 在 mac/Linux 无等价实现；DevTools 仍只验证调用成功，未做像素级断言。
+- 安全探针用非回环 IPv4 构造异源；若 CI runner 无可用非回环 IPv4，专项会报 SKIP_REASON 并失败（需 runner 具备基础网络，windows-latest 满足）。
+
+### 6.4 复现命令（v1.3）
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+cd D:/work/qwen/elecmini
+git pull
+cargo +stable-x86_64-pc-windows-msvc build --release -p elecmini-host --features windows-gate --bins
+
+# Windows 安全加固 + 平台降级专项（22/22）
+node contract/win-check.js
+
+# 全套（本机需指定 msvc 工具链；GitHub runner 无需）
+ELECMINI_RUST_TOOLCHAIN=stable-x86_64-pc-windows-msvc bash ci/check.sh
 ```

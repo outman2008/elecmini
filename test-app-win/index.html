@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>ElecMini WIN Local</title></head>
+<body>
+<h1>本地受信 origin 基线</h1>
+<script>
+(function () {
+  var api = window.electronAPI;
+  if (!api) { console.log('WIN_LOCAL_NO_API'); return; }
+  api.log('page-ready origin=' + location.origin);
+  api.ping('v-LOCAL').then(function (r) {
+    api.log('ping-LOCAL=' + JSON.stringify(r));
+  }).catch(function (e) { api.log('ping-LOCAL-ERR=' + String(e && e.message || e)); });
+})();
+</script>
+</body>
+</html>

@@ -56,11 +56,11 @@ jobs:
             dist/*.json
           if-no-files-found: ignore
 
-  # ---------- Windows：编译 + 静态检查 + 单测（WebView2）----------
-  # 说明：Windows runner 无 xvfb，ci/check.sh 自动跳过需窗口的 E2E；
-  # 未安装 test-app/node_modules，contract 审计检查自动跳过。
+  # ---------- Windows：全套真机 E2E（WebView2）----------
+  # Windows runner 自带交互桌面 + WebView2，无需 xvfb：
+  # 编译 → 门禁真机探测 → 差分契约 → P1/P2 E2E → S4 → 安全加固+平台降级专项。
   checks-windows:
-    name: 编译+单测（Windows / WebView2）
+    name: 全套检查（Windows / WebView2 真机）
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,14 +73,27 @@ jobs:
       - name: 安装根依赖
         run: npm install --no-audit --no-fund
 
+      - name: 安装 test-app 依赖（electron.d.ts + 差分契约 electron.exe）
+        run: npm --prefix test-app ci --no-audit --no-fund
+
       - name: 设置 Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: 运行检查（E2E 自动跳过）
+      - name: 运行全套检查（含真机 E2E）
         shell: bash
         run: bash ci/check.sh
+
+      - name: 上传检查报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elecmini-reports-windows
+          path: |
+            contract/results/
+            migrate/api-surface/results/
+          if-no-files-found: ignore
 
   # ---------- macOS：编译 + 静态检查 + 单测（WKWebView）----------
   checks-macos:

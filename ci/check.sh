@@ -21,6 +21,12 @@ run() {
 
 has_xvfb() { command -v xvfb-run >/dev/null 2>&1; }
 
+# Rust 工具链：GitHub runner 默认 msvc 即可；本地多工具链机器可用 ELECMINI_RUST_TOOLCHAIN 指定。
+# 例（本机 Windows）：ELECMINI_RUST_TOOLCHAIN=stable-x86_64-pc-windows-msvc bash ci/check.sh
+CARGO="cargo"
+if [ -n "${ELECMINI_RUST_TOOLCHAIN:-}" ]; then CARGO="cargo +${ELECMINI_RUST_TOOLCHAIN}"; fi
+has_rust_component() { rustup component list --installed 2>/dev/null | grep -q "^$1-"; }
+
 # 0) 质量门禁：JS lint / Rust 格式 / clippy
 if [ -d node_modules ] && command -v npx >/dev/null 2>&1; then
   run "JS lint(eslint)" bash -c 'npx eslint runtime shim/src pack contract migrate/*.js'
@@ -28,9 +34,17 @@ else
   echo "[SKIP] JS lint：未安装 node_modules（npm install 后启用）"
 fi
 if command -v cargo >/dev/null 2>&1; then
-  run "Rust 格式(cargo fmt --check)" bash -c 'cargo fmt --check'
+  if has_rust_component rustfmt; then
+    run "Rust 格式(cargo fmt --check)" bash -c "$CARGO fmt --check"
+  else
+    echo "[SKIP] Rust 格式：当前工具链未安装 rustfmt 组件"
+  fi
   if [ "$QUICK" -eq 0 ]; then
-    run "Rust clippy(-D warnings)" bash -c 'cargo clippy --release -p elecmini-host -- -D warnings 2>&1 | grep -E "^error|^warning: unused|Finished" | tail -3; test ${PIPESTATUS[0]} -eq 0'
+    if has_rust_component clippy; then
+      run "Rust clippy(-D warnings)" bash -c "$CARGO clippy --release -p elecmini-host -- -D warnings 2>&1 | grep -E \"^error|^warning: unused|Finished\" | tail -3; test \${PIPESTATUS[0]} -eq 0"
+    else
+      echo "[SKIP] Rust clippy：当前工具链未安装 clippy 组件"
+    fi
   fi
 fi
 
@@ -99,9 +113,16 @@ if [ -f migrate/api-surface/audit.js ] && [ -f test-app/node_modules/electron/el
   "
 fi
 
+IS_WINDOWS=0
+if [[ "$OSTYPE" == msys* || "$OSTYPE" == mingw* || "$OSTYPE" == cygwin* ]]; then IS_WINDOWS=1; fi
+
 if [ "$QUICK" -eq 0 ]; then
-  # 8) host 编译
-  run "Rust host 编译" bash -c 'cargo build --release -p elecmini-host --bin elecmini-host 2>&1 | grep -E "Finished|error" | tail -1; test ${PIPESTATUS[0]} -eq 0'
+  # 8) host 编译（Windows 需 windows-gate + 全部 bins，门禁探测依赖 win_gate.exe）
+  if [ "$IS_WINDOWS" -eq 1 ]; then
+    run "Rust host 编译(Windows)" bash -c "$CARGO build --release -p elecmini-host --features windows-gate --bins 2>&1 | grep -E \"Finished|error\" | tail -1; test \${PIPESTATUS[0]} -eq 0"
+  else
+    run "Rust host 编译" bash -c "$CARGO build --release -p elecmini-host --bin elecmini-host 2>&1 | grep -E \"Finished|error\" | tail -1; test \${PIPESTATUS[0]} -eq 0"
+  fi
 
   if has_xvfb; then
     # 9) 差分契约（38 用例）
@@ -129,13 +150,21 @@ if [ "$QUICK" -eq 0 ]; then
         run "完整 UI 全流程" bash -c 'timeout 90 xvfb-run -a node migrate/full-app/verify.js 2>&1 | tail -10; test ${PIPESTATUS[0]} -eq 0'
       fi
     fi
+  elif [ "$IS_WINDOWS" -eq 1 ]; then
+    # Windows 原生桌面 + WebView2：不需要 xvfb，真机跑全部 E2E
+    run "门禁真机探测(L0)" node -e 'const p=require("./runtime/gate").probe(); if(p.level!=="L0"){console.error(p);process.exit(1)} console.log(p)'
+    # 差分契约依赖 test-app/node_modules 的 electron.exe；CI 已安装，本地缺失则跳过并明确提示
+    if [ -x test-app/node_modules/electron/dist/electron.exe ]; then
+      run "差分契约测试(Windows)" bash -c 'ELECTRON_RUN_AS_NODE= timeout 120 node contract/run.js 2>&1 | tail -3; test ${PIPESTATUS[0]} -eq 0'
+    else
+      echo "[SKIP] 差分契约：缺 test-app/node_modules（先 npm --prefix test-app ci）"
+    fi
+    run "P1 主流程 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 timeout 45 node runtime/launcher.js test-app-p1 2>&1 | grep -q PING_RESULT'
+    run "P2 全模块 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 ELECMINI_TEST_FILE=/tmp/p2-file.txt timeout 45 node runtime/launcher.js test-app-p2 2>&1 | grep -q safeStorage'
+    run "S4 WebView2 能力(请求拦截/CDP/DevTools)" node contract/s4-check.js
+    run "Windows 安全加固+平台降级" node contract/win-check.js
   else
-    echo "[SKIP] E2E/差分契约：无 xvfb-run"
-  fi
-
-  # Windows 原生：S4 WebView2 专属能力（请求拦截 / CDP / DevTools）
-  if [[ "$OSTYPE" == msys* || "$OSTYPE" == mingw* ]]; then
-    run "S4 WebView2 能力" node contract/s4-check.js
+    echo "[SKIP] E2E/差分契约：无 xvfb-run（非 Windows 平台）"
   fi
 else
   echo "[SKIP] --quick 模式跳过编译/E2E/差分契约"
