@@ -12,6 +12,33 @@ import path from 'node:path';
 import { parse } from 'acorn';
 import * as walk from 'acorn-walk';
 
+// P7：TypeScript 支持——真实 Electron 项目主流为 TS/TSX。
+// 用 typescript.transpileModule 剥离类型注解后交 acorn 解析；无 TS 依赖时降级为仅扫 JS。
+let ts = null;
+try {
+  const mod = (await import('typescript')).default;
+  // TS7 ESM 默认导出可能不带命名空间枚举；TS5 完整带。统一取枚举，缺失则用数值常量兜底。
+  ts = {
+    transpileModule: mod.transpileModule,
+    ScriptTarget: mod.ScriptTarget || { ES2020: 8 },
+    ModuleKind: mod.ModuleKind || { ESNext: 99 },
+    JsxEmit: mod.JsxEmit || { Preserve: 1 },
+  };
+} catch (_) { /* 可选依赖 */ }
+function toJs(src, file) {
+  if (!/\.tsx?$/.test(file) || !ts) return src;
+  try {
+    return ts.transpileModule(src, {
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2020,
+        module: ts.ModuleKind.ESNext,
+        jsx: ts.JsxEmit.Preserve,
+      },
+      fileName: file,
+    }).outputText;
+  } catch (_) { return src; }
+}
+
 // ---------- CLI 参数 ----------
 const argv = process.argv.slice(2);
 const arg = (name, def) => {
@@ -44,14 +71,15 @@ function collectFiles(dir, acc = []) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) collectFiles(full, acc);
-    else if (/\.(m?js|cjs|jsx)$/.test(entry.name)) acc.push(full);
+    else if (/\.(m?js|cjs|jsx|ts|tsx)$/.test(entry.name)) acc.push(full);
   }
   return acc;
 }
 
 // ---------- 分析单个文件 ----------
 function analyzeFile(file) {
-  const src = fs.readFileSync(file, 'utf8');
+  const rawSrc = fs.readFileSync(file, 'utf8');
+  const src = toJs(rawSrc, file); // P7：TS/TSX → JS
   let ast;
   try {
     ast = parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true });

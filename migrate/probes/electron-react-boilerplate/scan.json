@@ -1,0 +1,275 @@
+{
+  "generatedAt": "2026-11-24T10:14:14.633Z",
+  "project": "/workspace/target-apps/electron-react-boilerplate",
+  "fileCount": 23,
+  "totalCallSites": 27,
+  "byStatus": {
+    "🟡": 20,
+    "✅": 7
+  },
+  "byModule": {
+    "webPreferences": 2,
+    "ipcMain": 1,
+    "app": 6,
+    "BrowserWindow": 1,
+    "shell": 9,
+    "Menu": 3,
+    "ipcRenderer": 4,
+    "contextBridge": 1
+  },
+  "findings": [
+    {
+      "module": "webPreferences",
+      "option": "preload",
+      "status": "🟡",
+      "line": 26,
+      "kind": "option",
+      "file": "electron.vite.config.ts"
+    },
+    {
+      "module": "ipcMain",
+      "method": "on",
+      "status": "✅",
+      "line": 17,
+      "kind": "call",
+      "via": "ipcMain",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "app",
+      "method": "getAppPath",
+      "status": "✅",
+      "line": 43,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 getAppPath 未在归属表中登记，按宿主模块 app 判定",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "webPreferences",
+      "option": "preload",
+      "status": "🟡",
+      "line": 53,
+      "kind": "option",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "BrowserWindow",
+      "status": "🟡",
+      "line": 47,
+      "kind": "new",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 74,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 86,
+      "kind": "call",
+      "via": "app",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "app",
+      "method": "on",
+      "status": "✅",
+      "line": 82,
+      "kind": "call",
+      "via": "app",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "app",
+      "method": "whenReady",
+      "status": "✅",
+      "line": 100,
+      "kind": "call",
+      "via": "app",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "app",
+      "method": "on",
+      "status": "✅",
+      "line": 105,
+      "kind": "call",
+      "via": "app",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 109,
+      "kind": "call",
+      "via": "app",
+      "file": "src/main/main.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "buildFromTemplate",
+      "status": "🟡",
+      "line": 14,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 buildFromTemplate 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "setApplicationMenu",
+      "status": "🟡",
+      "line": 15,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 setApplicationMenu 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "buildFromTemplate",
+      "status": "🟡",
+      "line": 21,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 buildFromTemplate 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 45,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 51,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 57,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 63,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 100,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 106,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 112,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 118,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "src/main/menu.ts"
+    },
+    {
+      "module": "ipcRenderer",
+      "method": "send",
+      "status": "🟡",
+      "line": 7,
+      "kind": "call",
+      "via": "ipcRenderer",
+      "file": "src/main/preload.ts"
+    },
+    {
+      "module": "ipcRenderer",
+      "method": "on",
+      "status": "🟡",
+      "line": 11,
+      "kind": "call",
+      "via": "ipcRenderer",
+      "file": "src/main/preload.ts"
+    },
+    {
+      "module": "ipcRenderer",
+      "method": "removeListener",
+      "status": "🟡",
+      "line": 13,
+      "kind": "call",
+      "via": "ipcRenderer",
+      "note": "方法 removeListener 未在归属表中登记，按宿主模块 ipcRenderer 判定",
+      "file": "src/main/preload.ts"
+    },
+    {
+      "module": "ipcRenderer",
+      "method": "once",
+      "status": "🟡",
+      "line": 17,
+      "kind": "call",
+      "via": "ipcRenderer",
+      "file": "src/main/preload.ts"
+    },
+    {
+      "module": "contextBridge",
+      "method": "exposeInMainWorld",
+      "status": "🟡",
+      "line": 21,
+      "kind": "call",
+      "via": "contextBridge",
+      "file": "src/main/preload.ts"
+    }
+  ]
+}
