@@ -1,6 +1,6 @@
 {
   "name": "elecmini",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Electron API contract with system WebView rendering (tao + wry + Node sidecar) — drop Chromium, keep require('electron').",
   "license": "MIT",
   "author": "ElecMini contributors",
