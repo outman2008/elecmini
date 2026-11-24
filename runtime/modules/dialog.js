@@ -20,9 +20,12 @@ const dialog = {
   showErrorBox(title, content) {
     return ctx.get().rpc.notify('dialog:showError', { title, content });
   },
-  showOpenDialogSync() {
-    throw new Error('[elecmini] dialog.showOpenDialogSync 不支持（系统 WebView 同步对话框降级，请改用异步 showOpenDialog）');
-  },
+  // 同步 API（showMessageBoxSync/showOpenDialogSync/showSaveDialogSync）刻意不在
+  // 此显式实现，交由 runtime/contract-fill.js 的补齐层生成「同步安全默认值」桩：
+  //   1) 保持 degraded 登记，审计分级诚实（不算作 native 真实能力）；
+  //   2) 同步返回类型正确的值（number/string[]/string），避免调用方 `===`/length
+  //      等同步运算因收到 Promise 而静默失真（如 caprine 用 ===1 判断是否退出）。
+  // 迁移工具 assess.js 会对这些调用点提示改写为 await 异步 API。
 };
 
 module.exports = { dialog };

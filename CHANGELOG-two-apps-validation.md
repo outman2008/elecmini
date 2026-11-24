@@ -36,8 +36,9 @@
 ## 发现（未改，如实记录）
 
 - caprine 的 `Notification`/`TouchBar` 顶层导出为 `undefined`（静态已标 ❌/❓，运行时证实）。
-- caprine 的 `dialog.showMessageBoxSync`（2 处）降级桩返回 `{}`，缺 `response` 字段；
-  原应用依赖 `response` 判断用户选择，会拿到 `undefined`——不崩溃但行为失真，
-  是"表面 100% ≠ 语义完整"的实证。迁移须按 `assess.js` 建议改为 `await showMessageBox()`。
+- caprine 的 `dialog.showMessageBoxSync`（2 处）官方返回 `number`（按钮索引），原降级桩
+  返回 `Promise<null>`，`buttonIndex === 1` 恒 false——静默失真。**已在
+  `CHANGELOG-sync-degrade-fix.md` 修复**：同步降级桩返回 `defaultId`。迁移仍须按
+  `assess.js` 建议改为 `await showMessageBox()` 以获得真实交互。
 - 遵循现代安全实践（preload + contextBridge）的项目（erb）迁移阻力远小于大量使用同步 API /
   平台原生 UI 的老牌应用（caprine）。

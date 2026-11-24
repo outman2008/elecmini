@@ -69,6 +69,48 @@ function defaultValue(member) {
   return null;
 }
 
+/**
+ * 同步 API 的安全默认值（按官方 electron.d.ts 返回类型）。
+ *
+ * 关键语义：forced-sync 调用方写的是 `const x = fooSync()`，期望拿到同步值。
+ * 若降级桩返回 Promise，则 `x === 1` / `x.length` / `x[0]` 等同步运算全部静默失真
+ * （如 caprine 用 `showMessageBoxSync(...) === 1` 判断是否退出）。因此同步 API
+ * 的降级桩必须「同步返回类型正确的值」，即使无法真的弹出对话框。
+ *
+ * 值的选择原则：返回「默认/取消」语义的安全值，不误触发破坏性分支。
+ */
+function syncSafeDefault(mod, member, args) {
+  // 兼容 (options) 与 (window, options) 两种重载：优先取真正含选项字段的对象，
+  // 跳过 window 对象（它也是 object，但没有 defaultId/buttons/message）。
+  const opts = (args || []).find((a) => a && typeof a === 'object' && !Array.isArray(a)
+    && ('defaultId' in a || 'buttons' in a || 'message' in a || 'defaultPath' in a)) || {};
+  switch (member) {
+    case 'showMessageBoxSync':
+      // 官方返回 number（被点击按钮索引）。返回调用方指定的 defaultId，
+      // 等价于用户点了默认按钮；caprine defaultId=0 → Wait/继续，不误退出。
+      return typeof opts.defaultId === 'number' ? opts.defaultId : 0;
+    case 'showOpenDialogSync':
+      // 官方返回 string[] | undefined（取消为 undefined）。空数组表示未选中，
+      // 调用方 `paths.forEach` 不会崩，也不会误当有效路径处理。
+      return [];
+    case 'showSaveDialogSync':
+      // 官方返回 string，取消为 undefined。空串表示未选择保存路径。
+      return '';
+    case 'sendSync':
+      // 官方返回 any（同步 IPC 结果）。undefined 表示无 Reply，属安全默认。
+      return undefined;
+    default:
+      if (/^(is|has|should|can|will|does|supports)/.test(member)) return false;
+      return undefined;
+  }
+}
+
+/** 是否为架构不可补的同步 API（其降级桩须同步返回安全值，不能返回 Promise） */
+function isSyncUnsupported(mod, member) {
+  const r = degradeReason(mod, member);
+  return !!r && r.startsWith('unsupported-sync:');
+}
+
 function ensureState(target, isClass) {
   // 单例对象用自身隐藏字段；class 实例用实例字段
   if (isClass) return null; // 实例方法内按 this 处理
@@ -109,7 +151,10 @@ function fillObject(mod, target, spec, isClass) {
       } else if (reason) {
         Object.defineProperty(target.prototype, member, {
           configurable: true, enumerable: true, writable: true,
-          value: function () { return Promise.resolve(defaultValue(member)); },
+          // 同步 API 必须同步返回安全值；其余降级桩返回 Promise<默认值>
+          value: isSyncUnsupported(mod, member)
+            ? function (...args) { return syncSafeDefault(mod, member, args); }
+            : function () { return Promise.resolve(defaultValue(member)); },
         });
       } else if (isSetter) {
         Object.defineProperty(target.prototype, member, {
@@ -138,7 +183,10 @@ function fillObject(mod, target, spec, isClass) {
       } else if (reason) {
         Object.defineProperty(target, member, {
           configurable: true, enumerable: true, writable: true,
-          value: () => Promise.resolve(defaultValue(member)),
+          // 同步 API 必须同步返回安全值；其余降级桩返回 Promise<默认值>
+          value: isSyncUnsupported(mod, member)
+            ? (...args) => syncSafeDefault(mod, member, args)
+            : () => Promise.resolve(defaultValue(member)),
         });
       } else if (isSetter) {
         Object.defineProperty(target, member, {

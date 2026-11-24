@@ -48,6 +48,18 @@ fi
 # 注：默认只报告不判定（覆盖率低是已知阶段性事实），核心模块全导出作为硬门槛
 if [ -f migrate/api-surface/audit.js ] && [ -f test-app/node_modules/electron/electron.d.ts ]; then
   run "契约补齐层单测" node migrate/api-surface/contract-fill.test.js
+  run "同步 API 降级语义(caprine 场景)" node -e "
+    const noop=()=>{};const p=(b={})=>new Proxy(b,{get:(t,k)=>k in t?t[k]:noop});
+    require('./runtime/context').init({rpc:p({call:()=>Promise.resolve({ok:true})}),store:p({readyPromise:Promise.resolve()}),appDir:'',appPath:'',baseUrl:'',closeServer:noop});
+    const e=require('./runtime/electron.js');
+    // caprine ensure-online.ts: buttonIndex = showMessageBoxSync({...defaultId:0}); if(buttonIndex===1) quit
+    const buttonIndex=e.dialog.showMessageBoxSync({message:'offline',buttons:['Wait','Quit'],defaultId:0,cancelId:1});
+    if(typeof buttonIndex!=='number'||buttonIndex===1||buttonIndex instanceof Promise){
+      console.error('showMessageBoxSync 语义失真：拿到',buttonIndex,'(应为 number 0，非 Promise)');process.exit(1);
+    }
+    if(e.ipcRenderer.sendSync('ch') instanceof Promise){console.error('sendSync 返回 Promise');process.exit(1)}
+    console.log('同步降级桩返回类型正确：showMessageBoxSync='+buttonIndex+'(number), sendSync=undefined');
+  "
   run "官方 API 表面基线" node migrate/api-surface/audit.js
   run "核心契约完整覆盖" node -e "
     const r=require('./migrate/api-surface/results/api-surface.json');

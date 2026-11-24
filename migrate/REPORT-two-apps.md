@@ -49,9 +49,11 @@
 ### 3. caprine 暴露的真实迁移障碍（验证静态评估有效性）
 
 - `Notification`、`TouchBar` 顶层导出为 `undefined`（静态扫描已标 ❌/❓，运行时证实断链）。
-- `dialog.showMessageBoxSync`（2 处）：unsupported 降级桩返回 `{}`，缺 `response` 字段。
-  caprine 的 `ensure-online.ts`/`util.ts` 依赖 `response` 判断用户选择，会拿到 `undefined`——
-  不崩溃但行为失真。这是"表面覆盖 100% ≠ 语义完整"的又一实证。
+- `dialog.showMessageBoxSync`（2 处）：官方返回 `number`（被点击按钮索引），caprine 的
+  `ensure-online.ts`/`util.ts` 用 `buttonIndex === 1` 判断是否退出。修复前降级桩返回
+  `Promise<null>`（`JSON.stringify` 显 `{}`），`Promise === 1` 恒为 false —— 静默失真。
+  **已修复**：同步降级桩改为同步返回 `defaultId`（number，默认 0），caprine `defaultId=0`
+  走到"继续/Wait"分支，不误退出（见 `CHANGELOG-sync-degrade-fix.md`）。
 - `nodeIntegration`/`contextIsolation` 配置：架构冲突，须改为 contextBridge 模式。
 - 降级 API（getUserDefault/globalShortcut/setSpellCheckerLanguages/Tray）运行时均可调用，属 mirror/降级态。
 

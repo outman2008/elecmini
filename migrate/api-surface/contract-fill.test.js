@@ -61,6 +61,23 @@ ok('降级桩：平台专属/同步 API 存在且返回安全值', () => {
   assert.strictEqual(typeof e.app.setActivationPolicy, 'function');
 });
 
+ok('同步 API 降级桩返回类型正确的同步值（非 Promise）', () => {
+  // showMessageBoxSync 官方返回 number（按钮索引）。同步调用方用 === 判断，
+  // 若降级桩返回 Promise 会静默失真（caprine 用 ===1 判断是否退出）。
+  const r = e.dialog.showMessageBoxSync({ message: 'offline', buttons: ['Wait', 'Quit'], defaultId: 0, cancelId: 1 });
+  assert.strictEqual(typeof r, 'number');
+  assert.strictEqual(r, 0, '默认返回 defaultId');
+  assert.ok(!(r instanceof Promise), '不能返回 Promise');
+  // (window, options) 重载仍能取到 options.defaultId
+  assert.strictEqual(e.dialog.showMessageBoxSync({ id: 1 }, { defaultId: 1 }), 1);
+  // 其余同步 API 语义安全值
+  assert.deepStrictEqual(e.dialog.showOpenDialogSync(), []);
+  assert.strictEqual(e.dialog.showSaveDialogSync(), '');
+  assert.strictEqual(e.ipcRenderer.sendSync('ch'), undefined);
+  // 分级仍是 degraded，不因返回安全值而美化成 native
+  assert.strictEqual(registry.dialog.showMessageBoxSync.level, 'degraded');
+});
+
 ok('分级登记：native/mirror/degraded 三级均有记录', () => {
   let hasMirror = false, hasDegraded = false;
   for (const members of Object.values(registry)) {
@@ -73,4 +90,4 @@ ok('分级登记：native/mirror/degraded 三级均有记录', () => {
   assert.ok(hasDegraded, '无 degraded 登记');
 });
 
-console.log(`[contract-fill] PASS=${pass}/6`);
+console.log(`[contract-fill] PASS=${pass}/7`);
