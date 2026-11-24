@@ -1,49 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="ElecMini logo">
   <title>ElecMini — Electron API contract, system WebView rendering</title>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0f2027"/>
-      <stop offset="0.5" stop-color="#203a43"/>
-      <stop offset="1" stop-color="#2c5364"/>
+    <linearGradient id="ring" x1="0.05" y1="0.05" x2="0.95" y2="0.95">
+      <stop offset="0" stop-color="#fb7185"/>
+      <stop offset="0.5" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#22d3ee"/>
     </linearGradient>
-    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#7ef9ff"/>
-      <stop offset="1" stop-color="#1fa2c4"/>
-    </linearGradient>
-    <linearGradient id="orbitA" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#7ef9ff"/>
-      <stop offset="1" stop-color="#38bdf8"/>
-    </linearGradient>
-    <linearGradient id="orbitB" x1="0" y1="0" x2="1" y2="0">
+    <linearGradient id="core" x1="0.1" y1="0" x2="0.9" y2="1">
       <stop offset="0" stop-color="#fbbf24"/>
-      <stop offset="1" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#fb923c"/>
     </linearGradient>
-    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="3.2" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.6" flood-color="#7c3aed" flood-opacity="0.22"/>
     </filter>
   </defs>
 
-  <!-- badge -->
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
-  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="27.25" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+  <!-- one open, lightweight orbit -->
+  <path d="M 83.3 41 A 30 30 0 0 1 64 94 A 30 30 0 0 1 34 64"
+        fill="none" stroke="url(#ring)" stroke-width="13" stroke-linecap="round" filter="url(#soft)"/>
 
-  <!-- electron-style orbits, drawn as open dashes: lighter than a full Chromium core -->
-  <g fill="none" stroke-width="4.2" stroke-linecap="round" filter="url(#glow)">
-    <ellipse cx="64" cy="64" rx="45" ry="19" stroke="url(#orbitA)" transform="rotate(-32 64 64)"
-             stroke-dasharray="150 26 42 16"/>
-    <ellipse cx="64" cy="64" rx="45" ry="19" stroke="url(#orbitB)" transform="rotate(34 64 64)"
-             stroke-dasharray="120 30 55 18" stroke-opacity="0.9"/>
-  </g>
+  <!-- the preserved JS API core -->
+  <circle cx="64" cy="64" r="13" fill="url(#core)" filter="url(#soft)"/>
 
-  <!-- central core: the preserved Electron JS API contract -->
-  <circle cx="64" cy="64" r="15" fill="url(#core)" filter="url(#glow)"/>
-  <circle cx="64" cy="64" r="6.2" fill="#0f2027" fill-opacity="0.55"/>
-
-  <!-- three satellites: WebView2 / WKWebView / WebKitGTK -->
-  <g filter="url(#glow)">
-    <circle cx="101" cy="43" r="4.6" fill="#7ef9ff"/>
-    <circle cx="27" cy="79" r="4.6" fill="#fbbf24"/>
-    <circle cx="83" cy="102" r="4.6" fill="#a7f3d0"/>
+  <!-- three platforms: WebView2 / WKWebView / WebKitGTK -->
+  <g filter="url(#soft)">
+    <circle cx="64" cy="15" r="6.5" fill="#22d3ee"/>
+    <circle cx="107" cy="89" r="6.5" fill="#a78bfa"/>
+    <circle cx="21" cy="89" r="6.5" fill="#fb7185"/>
   </g>
 </svg>
