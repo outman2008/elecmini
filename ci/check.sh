@@ -44,6 +44,18 @@ if command -v chromium >/dev/null 2>&1; then
   run "渲染特性探测(chromium)" node compat/check.js --browser chromium --out compat/results/chromium.json
 fi
 
+# 7.5) 官方 API 表面基线（Electron 官方 electron.d.ts vs 实际导出）
+# 注：默认只报告不判定（覆盖率低是已知阶段性事实），核心模块全导出作为硬门槛
+if [ -f migrate/api-surface/audit.js ] && [ -f test-app/node_modules/electron/electron.d.ts ]; then
+  run "官方 API 表面基线" node migrate/api-surface/audit.js
+  run "核心模块完整导出" node -e "
+    const r=require('./migrate/api-surface/results/api-surface.json');
+    const c=r.summary.core;
+    if(c.present!==c.total){console.error('核心模块未全导出 '+c.present+'/'+c.total);process.exit(1)}
+    console.log('核心模块 '+c.present+'/'+c.total+' 全部导出');
+  "
+fi
+
 if [ "$QUICK" -eq 0 ]; then
   # 8) host 编译
   run "Rust host 编译" bash -c 'cargo build --release -p elecmini-host --bin elecmini-host 2>&1 | grep -E "Finished|error" | tail -1; test ${PIPESTATUS[0]} -eq 0'

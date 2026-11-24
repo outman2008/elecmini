@@ -33,11 +33,21 @@ bindSessionEvents(rpc);
 
 const app = new App();
 
-// nativeImage：P1 最小实现（toDataURL / fromDataURL / createEmpty）
+// nativeImage：P1 最小实现 + P5 官方命名对齐
+// 2026-11-24 官方 electron.d.ts 表面检测发现：原实现用 fromDataURL/fromPath，
+// 与 Electron 标准 createFromDataURL/createFromPath 不一致（同类 clipboard 断链）。
+// 保留旧名兼容既有适配器，同时提供官方名，使契约可对齐。
+const _nativeEmpty = () => ({ isEmpty: () => true, toDataURL: () => '' });
+const _nativeFromDataURL = (url) => ({ isEmpty: () => false, toDataURL: () => url });
+const _nativeFromPath = (p) => ({ isEmpty: () => false, toDataURL: () => `file://${p}` });
 const nativeImage = {
-  createEmpty: () => ({ isEmpty: () => true, toDataURL: () => '' }),
-  fromDataURL: (url) => ({ isEmpty: () => false, toDataURL: () => url }),
-  fromPath: (p) => ({ isEmpty: () => false, toDataURL: () => `file://${p}` }),
+  createEmpty: _nativeEmpty,
+  // 兼容历史适配器命名
+  fromDataURL: _nativeFromDataURL,
+  fromPath: _nativeFromPath,
+  // Electron 官方标准命名
+  createFromDataURL: _nativeFromDataURL,
+  createFromPath: _nativeFromPath,
 };
 
 module.exports = {

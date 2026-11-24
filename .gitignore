@@ -29,6 +29,9 @@ migrate/reports/
 migrate/full-app/electron-api-demos/
 migrate/full-app/electron-api-demos-adapted/
 
+# 官方 API 表面检测的运行时产物（由 audit.js 重新生成）
+migrate/api-surface/results/
+
 # 系统/编辑器
 .DS_Store
 *.swp
