@@ -54,7 +54,7 @@
 ## 复现
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 cargo build --release -p elecmini-host --bin elecmini-host
 ELECMINI_AUTOTEST=1 timeout 14 xvfb-run -a node runtime/launcher.js test-app-p1
 timeout 40 xvfb-run -a node contract/run.js

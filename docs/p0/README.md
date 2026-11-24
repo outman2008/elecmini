@@ -99,7 +99,7 @@
 | `shim/src/scan-api.js` | S6 AST 调用点扫描器（可运行） |
 | `shim/src/ipc-types.js` + `.test.js` | S3 IPC 类型封装层与 7 项单测 |
 | `test-app/` | 示例 Electron 应用（扫描目标 + 内存基线） |
-| `docs/p0/api-call-sites.json` | S6 扫描结果 |
+| `shim/src/scan-api.js`（运行时产出 `api-call-sites.json`） | S6 扫描结果（运行时生成，不随仓库分发） |
 | `docs/p0/gate-design.md` | S8 门禁设计与部分验证 |
 | `docs/p0/README.md` | 本报告 |
 
@@ -108,7 +108,7 @@
 ## 五、如何复现
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 cargo build --release -p elecmini-host            # 需 WebKitGTK 4.1 开发库
 
 # L0 正常路径

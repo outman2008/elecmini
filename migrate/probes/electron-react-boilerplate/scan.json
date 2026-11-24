@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-24T10:14:14.633Z",
-  "project": "/workspace/target-apps/electron-react-boilerplate",
+  "project": "<目标应用目录>/electron-react-boilerplate",
   "fileCount": 23,
   "totalCallSites": 27,
   "byStatus": {

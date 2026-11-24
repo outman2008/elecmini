@@ -48,7 +48,7 @@ electron-api-demos 是 2022 年的官方 demo，用了三项现代系统 WebView
 4. 6 条断言全部通过才 exit 0
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 node migrate/full-app/build.js
 xvfb-run -a node migrate/full-app/verify.js
 # 或全套：bash ci/check.sh

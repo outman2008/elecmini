@@ -116,7 +116,7 @@ GTK3 / WebKit2GTK / libsoup / glib 这些库在宿主进程、WebProcess、Netwo
 ## 六、可复现命令
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 # PSS 采样函数（真实物理内存）
 pss_of() { for p in $( { pgrep -f "$1"; pgrep -f "WebKitWebProcess|WebKitNetworkProcess"; } | sort -u); do
   awk '/^Pss:/{print $2}' /proc/$p/smaps_rollup 2>/dev/null; done | awk '{s+=$1} END{print s/1024 "MB"}'; }

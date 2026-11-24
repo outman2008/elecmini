@@ -1,6 +1,6 @@
 # ElecMini · 真实应用迁移评估
 
-- 应用目录：`/workspace/target-apps/electron-react-boilerplate`
+- 应用目录：`<目标应用目录>/electron-react-boilerplate`
 - 生成时间：2026-11-24T10:14:14.650Z
 - 决策基线：2026-11-24 双目标并重：包体/冷启动为硬门槛，内存降级为已知限制不否决
 

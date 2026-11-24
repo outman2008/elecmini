@@ -22,7 +22,7 @@
 ## 第一步：静态扫描（现在就能跑）
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 node migrate/assess.js --project <你的真实 Electron 应用目录>
 # 例：node migrate/assess.js --project /path/to/my-electron-app
 ```

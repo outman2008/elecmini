@@ -101,7 +101,7 @@ P1 基线 23 用例 + P2 新增 15 用例：nativeTheme（属性形态）、safe
 ## 七、复现命令
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 cargo build --release -p elecmini-host --bin elecmini-host
 
 # P2 全模块 E2E

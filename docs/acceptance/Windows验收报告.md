@@ -1,11 +1,9 @@
 # ElecMini Windows 系统测试验收报告
 
 - 日期：2026-11-24
-- 仓库：`https://github.com/outman2008/elecmini`（私有）
-- 本地路径：`D:\work\qwen\elecmini`
+- 仓库：`https://github.com/outman2008/elecmini`
 - 验收版本：`main` @ `59f6fe93d228111153514e3a11e149dd2d23ddc6`（2026-11-24 14:30 +0800）
 - 补验轮次：2026-11-24 15:30 完成 S4 专属能力、P1 退出、L0 遥测聚合三项推进
-- 仓库归档：`docs/acceptance/`（本报告、`gate-distribution-report.json`、`telemetry/gate-paths.jsonl`）
 - 环境：Windows 11 x64 / Node v22.22.2 / Rust 1.100.0 (MSVC) / VS2022 MSVC 14.44 / WebView2 Runtime **133.0.3065.82**
 
 ---
@@ -36,7 +34,7 @@
 
 | 项 | 结果 |
 |---|---|
-| 仓库拉取 | ✅ 私有仓库用临时 basic auth header 克隆，token 未写入 `.git/config` 或任何文件 |
+| 仓库拉取 | ✅ 通过认证克隆，凭证未写入 `.git/config` 或任何仓库文件 |
 | 网络 | 走本机代理 `127.0.0.1:10809`（Windows Internet Settings 已配，Git Bash 需手动 export） |
 | Rust 国内源 | ✅ `~/.cargo/config.toml` 配 rsproxy sparse index；crates 拉取 19s；rustup 用 `RUSTUP_DIST_SERVER=https://rsproxy.cn` 重装 MSVC toolchain **4min → 14s** |
 | Electron | ✅ 官方 zip 158,296,013B 完整下载；与 npmmirror zip 内二进制 MD5 一致（`2d6f3f61…`），镜像无错配。契约测试失败根因为宿主注入 `ELECTRON_RUN_AS_NODE=1`（见 2.6） |
@@ -122,7 +120,7 @@ electron exit=0 data=ok   elecmini exit=0 data=ok
 
 - `gate:result` 补齐 `engine/version/source`；`runtime/telemetry.js` 新增 Wilson 95% 置信下界、`byEngine/byVersion/byPlatform` 与 `goNoGo.verdict`（PASS/INCONCLUSIVE/FAIL/INSUFFICIENT_DATA，样本 <385 一律不下结论）。
 - 新增 `pack/telemetry-report.js` 聚合 CLI；`pack/telemetry.test.js` 扩到 **28/28**。
-- Windows 真机采集 7 条样本（1 条真实 L0 + 6 条注入分支），报告落在 `D:\work\qwen\elecmini-acceptance\gate-distribution-report.json`：**L0 57.1%、置信下界 25%、判定 FAIL**（含注入分支且样本不足，符合预期）。生产启用方式已写入 `docs/p4/README.md`。
+- Windows 真机采集 7 条样本（1 条真实 L0 + 6 条注入分支），聚合结果：**L0 57.1%、置信下界 25%、判定 FAIL**（含注入分支且样本不足，符合预期）。生产启用方式已写入 `docs/p4/README.md`。
 
 ---
 
@@ -163,33 +161,7 @@ P0 的 wine 测试全部用 `ELECMINI_TEST_PV` 注入，从未走真实注册表
 
 ### 3.5 工作区状态
 
-仓库改动文件（`git status` 验收时快照，含本轮新增）：
-```
- M ci/check.sh
- M contract/run.js
- M docs/p0/README.md
- M docs/p2/README.md
- M docs/p4/README.md
- M host/Cargo.toml
- M host/src/bin/win_gate.rs
- M host/src/main.rs
- M pack/telemetry.test.js
- M runtime/codec.js
- M runtime/gate-flow.js
- M runtime/gate.js
- M runtime/launcher.js
- M runtime/modules/browser-window.js
- M runtime/modules/session.js
- M runtime/static-server.js
- M runtime/telemetry.js
- M test-app-p1/main.js
-?? CHANGELOG-S4.md
-?? host/src/s4.rs
-?? contract/s4-check.js
-?? pack/telemetry-report.js
-?? test-app-s4/
-```
-打包产物均在仓外 `D:\work\qwen\elecmini-acceptance\`（`dist-win-slim` / `dist-win-p1` / `dist-win-s4` / `telemetry` / `gate-distribution-report.json`），未污染仓库。
+验收期间的改动已全部合入仓库对应提交；打包产物（`dist-win-slim` / `dist-win-p1` / `dist-win-s4` / `telemetry`）在仓库外生成，未污染仓库。
 
 ---
 
@@ -211,7 +183,7 @@ P0 的 wine 测试全部用 `ELECMINI_TEST_PV` 注入，从未走真实注册表
 # 环境
 export PATH="$HOME/.cargo/bin:$PATH"
 # 国内源（已写入 ~/.cargo/config.toml）
-cd D:/work/qwen/elecmini
+cd <项目根目录>
 cargo +stable-x86_64-pc-windows-msvc build --release -p elecmini-host --features windows-gate --bins
 
 # 门禁真实探测
@@ -236,8 +208,8 @@ node contract/s4-check.js
 # 单独验证 DevTools：ELECMINI_S4_DEVTOOLS=1 同上启动
 
 # L0 遥测聚合（生产把 --dir 指向集中收集的 gate-paths.jsonl）
-node pack/telemetry-report.js --dir D:/work/qwen/elecmini-acceptance/telemetry \
-  --out D:/work/qwen/elecmini-acceptance/gate-distribution-report.json --min-samples 4
+node pack/telemetry-report.js --dir <遥测样本目录>/telemetry \
+  --out <遥测样本目录>/gate-distribution-report.json --min-samples 4
 
 # 打包（默认 P2；可用 ELECMINI_PACK_APP 换应用）
 node pack/build.js --sku slim --target win32-x64 --out dist-win
@@ -299,7 +271,7 @@ ELECMINI_RUST_TOOLCHAIN=stable-x86_64-pc-windows-msvc bash ci/check.sh
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
-cd D:/work/qwen/elecmini
+cd <项目根目录>
 git pull
 cargo +stable-x86_64-pc-windows-msvc build --release -p elecmini-host --features windows-gate --bins
 

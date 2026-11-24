@@ -34,8 +34,7 @@
 
 ### 报告
 - `docs/p4/README.md`：P4 交付报告。
-- `docs/p4/gate-distribution-report.json`：门禁路径分布报告（模拟 100 样本，L0=95%）。
-- `docs/p4/gray-report.json`：灰度报告（10000 匿名设备，目标 10% 实际 10.83%）。
+- 门禁路径分布报告（模拟 100 样本，L0=95%）与灰度报告（10000 匿名设备，目标 10% 实际 10.83%）为运行时生成产物，由 `pack/telemetry-report.js` / `pack/gray.js` 重算，不随仓库分发。
 
 ## 修复
 - 兼容基线探测脚本 IIFE 未导出导致 `featureProbe is not defined` → 改为函数声明 + 双环境导出。

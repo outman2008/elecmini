@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-24T10:14:14.202Z",
-  "project": "/workspace/target-apps/caprine",
+  "project": "<目标应用目录>/caprine",
   "fileCount": 22,
   "totalCallSites": 84,
   "byStatus": {

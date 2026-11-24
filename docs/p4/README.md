@@ -8,12 +8,12 @@
 | 治理项 | 交付物 | 验证结果 |
 |---|---|---|
 | 门禁路径遥测 | `runtime/telemetry.js` + `pack/telemetry.test.js` | 闭环测试 **21/21**，默认关闭、无 PII、脱敏通过 |
-| L0 覆盖率跟踪 | 遥测汇总 + `docs/p4/gate-distribution-report.json` | 模拟分布 L0=95%、L1/L2=3%、盈亏平衡判定通过 |
+| L0 覆盖率跟踪 | 遥测汇总 + `pack/telemetry-report.js`（产物运行时生成） | 模拟分布 L0=95%、L1/L2=3%、盈亏平衡判定通过 |
 | 渲染兼容基线 | `compat/baseline.json` + `feature-probe.js` + `check.js` | 自测 **8/8** + 真实 chromium 探测通过（11 特性全支持） |
 | CI 检查 | `ci/check.sh` + `.github/workflows/ci.yml` | 全套 **11/11 通过** |
 | 截图对比 | `visual/capture.js` + `compare.py` | 相同图 0% 差异 pass、改背景 71.7% 差异 fail |
 | 灰度发布 | `pack/gray.js` + `gray-config.json` + `watch-webview.js` | 分桶自测 **13/13**，版本监控实测 WebKitGTK 2.52.6 达标 |
-| 门禁分布/灰度报告 | `docs/p4/gate-distribution-report.json`、`gray-report.json` | 已生成 |
+| 门禁分布/灰度报告 | `pack/telemetry-report.js`、`pack/gray.js`（产物运行时生成） | 自测通过 |
 
 ## 二、关键实现
 
@@ -61,14 +61,14 @@
 
 ## 四、需要你知道的限制
 
-1. **采集机制已闭环，真实用户数据仍缺失**：Windows 真机已跑通「埋点 → JSONL → 聚合 → Go/No-Go」全链路（本地 7 样本，含 1 条真实 WebView2 133 的 L0、6 条注入分支；报告见 `D:\work\qwen\elecmini-acceptance\gate-distribution-report.json`）。该样本量远低于 385，**不构成 L0 ≥95% 的结论**；`docs/p4/gate-distribution-report.json` 仍是 100 样本模拟数据，仅验证统计逻辑。生产启用方式：随 SKU 下发 `ELECMINI_TELEMETRY=1`（企业可设 `=0` 强制关闭），集中收集各机 `~/.elecmini/telemetry/gate-paths.jsonl` 后运行聚合器。前置阻塞项（文档 11.2 真实目标应用未指定）仍在。
+1. **采集机制已闭环，真实用户数据仍缺失**：Windows 真机已跑通「埋点 → JSONL → 聚合 → Go/No-Go」全链路（本地 7 样本，含 1 条真实 WebView2 133 的 L0、6 条注入分支；结果见 `docs/acceptance/Windows验收报告.md`）。该样本量远低于 385，**不构成 L0 ≥95% 的结论**。生产启用方式：随 SKU 下发 `ELECMINI_TELEMETRY=1`（企业可设 `=0` 强制关闭），集中收集各机 `~/.elecmini/telemetry/gate-paths.jsonl` 后运行聚合器。前置阻塞项（文档 11.2 真实目标应用未指定）仍在。
 2. **三引擎截图对比未实跑**：仅 Chromium 内核环境；WebView2/WKWebView 需真实平台采集，框架与阈值判定已就绪。
 3. **CI 覆盖的是能力基线**（特性探测），非真实最低版本机器；后者需在 ubuntu-22.04 / Win10 / macOS12 实体或 VM 上补跑。
 
 ## 五、复现命令
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 bash ci/check.sh              # 全套 11 项
 bash ci/check.sh --quick      # 快速（跳过编译/E2E/差分）
 node pack/telemetry.test.js   # 遥测闭环（28 断言，含 L0 判定）

@@ -581,7 +581,7 @@ gantt
 
 | # | 修订内容 | 原因 |
 |---|---|---|
-| 1 | P3 打包分发：双 SKU 打包器（Slim/Full × 三平台目录布局 + manifest）、产物启动器、门禁引导状态机（decide→install→verify）、代码签名脚本、自动更新（Velopack/Sparkle + 校验 + 回滚） | 按 7.5 执行，交付见 `/workspace/elecmini/docs/p3/README.md` |
+| 1 | P3 打包分发：双 SKU 打包器（Slim/Full × 三平台目录布局 + manifest）、产物启动器、门禁引导状态机（decide→install→verify）、代码签名脚本、自动更新（Velopack/Sparkle + 校验 + 回滚） | 按 7.5 执行，交付见 `<项目根目录>/docs/p3/README.md` |
 | 2 | 门禁闭环实测：状态机 6/6 分支，launcher L0 直通 / L2·L3 提示拦截不白屏；旧 `ELECMINI_GATE=block` 兼容 | L1 真实安装受 wine Omaha/OOBE 限制，逻辑闭环已验证，渲染需真实 Windows |
 | 3 | 包体实测：Slim 压缩后 41MB（Electron 274MB 的 15%），优于 Go 标准 40% 上限 | Node v22 二进制为主要来源；内存结论不变（P0 PSS 修正） |
 | 4 | 更新器自测 5/5（生成/校验/校验失败检出/应用/回滚）；签名三平台 dry-run 正确 | 无证书环境产出可配置脚本 + dry-run，真实签名需凭据 |
@@ -591,7 +591,7 @@ gantt
 
 | # | 修订内容 | 原因 |
 |---|---|---|
-| 1 | P2 能力补齐：screen/nativeTheme 真实系统探测、safeStorage 真实加密（openssl）、protocol（app:// 自定义协议）、dialog 原生（zenity）、clipboard 真实（xclip）、session/powerMonitor/systemPreferences 实装；Tray/globalShortcut 保留 API 形状 + 明确降级 | 按 7.4 执行，交付见 `/workspace/elecmini/docs/p2/README.md` |
+| 1 | P2 能力补齐：screen/nativeTheme 真实系统探测、safeStorage 真实加密（openssl）、protocol（app:// 自定义协议）、dialog 原生（zenity）、clipboard 真实（xclip）、session/powerMonitor/systemPreferences 实装；Tray/globalShortcut 保留 API 形状 + 明确降级 | 按 7.4 执行，交付见 `<项目根目录>/docs/p2/README.md` |
 | 2 | 差分契约扩展：23 → 38 用例，38 MATCH / 0 DIFF | 覆盖 P2 全部模块 API 签名/形状；平台相关行为值不作断言 |
 | 3 | 用系统工具（openssl/xclip/zenity）替代重量级 crate | 降低编译成本、规避 Xvfb 兼容问题；记录 AEAD 限制与降级边界 |
 | 4 | 修复：safeStorage（openssl enc 不支持 GCM → CBC + `-A`）、clipboard（xclip pipe EOF 卡死 → spawn 后台化）、nativeTheme（方法 → boolean 属性） | E2E 与差分测试暴露的真实 bug |
@@ -601,7 +601,7 @@ gantt
 
 | # | 修订内容 | 原因 |
 |---|---|---|
-| 1 | P1 核心闭环落地：B2 进程模型（Node sidecar + Rust host + JSON-RPC）、P1 全模块 shim、窗口事件转发、状态镜像同步 API、渲染层 preload、启动门禁 | 按 7.3 执行，交付位于 `/workspace/elecmini/`，报告见 `docs/p1/README.md` |
+| 1 | P1 核心闭环落地：B2 进程模型（Node sidecar + Rust host + JSON-RPC）、P1 全模块 shim、窗口事件转发、状态镜像同步 API、渲染层 preload、启动门禁 | 按 7.3 执行，交付位于 `<项目根目录>/`，报告见 `docs/p1/README.md` |
 | 2 | 差分契约测试框架建成：同一探针应用在真 Electron 与 ElecMini 各跑一遍，23 用例 23 MATCH / 0 DIFF | 落实技术选型第 12 项与 7.3 验收标准 |
 | 3 | 新增本地 HTTP server 承载 file:// 页面 | 规避 wry 0.52 WebKitGTK 对 file:// 的 IPC `InvalidUri` panic，符合 1.4 自定义协议承载建议 |
 | 4 | 已知降级点更新：同步对话框抛错、Tray/session P2 未实现、executeJavaScript 无返回值、new BrowserWindow 后即时 getBounds 为期望值 | 差分测试暴露的语义边界，逐条记录 |
@@ -613,7 +613,7 @@ gantt
 |---|---|---|
 | 1 | 1.2 核心指标表用 P0 实测值替换假设值 | P0 已在 Linux/WebKitGTK 2.52.6 环境实测：host 二进制 1.5MB、Electron dist 274MB、ElecMini 内存 ~445MB vs Electron ~558MB、冷启动 ~345ms |
 | 2 | 确认内存收益约 80%，未达 Go/No-Go 第 3 条（≤60%） | 重要不利发现，立项判断需据此调整 |
-| 3 | P0 交付物位于 `/workspace/elecmini/`，含可运行宿主、S2 同步验证、S6 扫描器、S3 类型单测、门禁设计 | 8 个 spike 的沙箱可验证部分全部有结论 |
+| 3 | P0 交付物位于 `<项目根目录>/`，含可运行宿主、S2 同步验证、S6 扫描器、S3 类型单测、门禁设计 | 8 个 spike 的沙箱可验证部分全部有结论 |
 
 ### v1.2（2026-11-24，最低 WebView 版本门禁 + 分级回退）
 

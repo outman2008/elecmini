@@ -4,7 +4,7 @@
 - 验证目标：`electron/electron-api-demos` v2.0.2（Electron 官方 API 演示应用）
   - 来源：`https://github.com/electron/electron-api-demos`（master @ codeload zip）
   - 规模：10.2k stars、54 个 JS 文件、4.3MB 源码
-  - 本地路径：`/workspace/target-apps/electron-api-demos`（仓库外，未污染）
+  - 本地路径：`<目标应用目录>/electron-api-demos`（仓库外，未污染）
 - 选取理由：官方维护、热门、**API 覆盖最全**（app/ipc/dialog/Menu/Tray/globalShortcut/shell/clipboard/screen/session/protocol/safeStorage 等），中等规模，是检验迁移兼容性的理想靶子。
 - 决策基线：2026-11-24 双目标并重（包体 + 冷启动为硬收益门槛；内存 PSS 107% 降级为已知限制、不否决）
 
@@ -28,7 +28,7 @@
 ## 二、静态扫描明细（S6）
 
 ```
-node migrate/assess.js --project /workspace/target-apps/electron-api-demos
+node migrate/assess.js --project <目标应用目录>/electron-api-demos
 ```
 
 | 档位 | 数量 | 说明 |
@@ -120,9 +120,9 @@ xvfb-run -a node contract/run.js
 ## 六、复现命令
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 # 1) 静态扫描
-node migrate/assess.js --project /workspace/target-apps/electron-api-demos \
+node migrate/assess.js --project <目标应用目录>/electron-api-demos \
   --out migrate/reports/electron-api-demos
 # 2) 迁移适配探针（ElecMini 实跑）
 MIGRATE_OUT=migrate/reports/electron-api-demos/probe/out.json ELECMINI_AUTOTEST=1 \

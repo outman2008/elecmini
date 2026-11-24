@@ -131,7 +131,7 @@ screen（getPrimaryDisplay）、nativeImage。
 ## 六、复现命令
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 cargo build --release -p elecmini-host --bin elecmini-host
 
 # 主流程 + IPC + 窗口事件 E2E

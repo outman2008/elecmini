@@ -1,6 +1,6 @@
 # CHANGELOG — S4 专属能力 / P1 退出 / L0 遥测（2026-11-24）
 
-> Windows 验收第二轮补验。对应报告：`D:\work\qwen\elecmini-acceptance\Windows验收报告.md`
+> Windows 验收第二轮补验。对应报告：`docs/acceptance/Windows验收报告.md`
 
 ## 新增能力
 

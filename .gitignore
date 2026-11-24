@@ -22,6 +22,13 @@ contract/results/electron.json
 contract/results/diff-report.json
 pack/webview-versions.jsonl
 
+# 验收/门禁运行时产物（可再生成，不入库）
+docs/p4/gate-distribution-report.json
+docs/p4/gray-report.json
+docs/acceptance/gate-distribution-report.json
+docs/acceptance/telemetry/gate-paths.jsonl
+docs/p0/api-call-sites.json
+
 # 真实应用迁移评估产物（含应用源码路径与业务信息，不入库）
 migrate/reports/
 

@@ -121,11 +121,11 @@ sudo apt-get install -y winehq-stable=10.0.0.0~noble-1 wine-stable=10.0.0.0~nobl
 wine --version   # 应为 wine-10.0
 sudo apt-get install -y mingw-w64
 rustup target add x86_64-pc-windows-gnu
-export WINEPREFIX=/root/.wine10-elecmini WINEDEBUG=-all
+export WINEPREFIX=~/.wine10-elecmini WINEDEBUG=-all
 wineboot -u
 
 # 交叉编译
-cd /workspace/elecmini
+cd <项目根目录>
 cargo build --release --target x86_64-pc-windows-gnu -p elecmini-host --bin win_gate
 cargo build --release --target x86_64-pc-windows-gnu -p elecmini-host --bin elecmini-host
 
@@ -153,7 +153,7 @@ wine wv2x64.exe /silent /install
 |---|---|
 | 添加 WineHQ 源（`dl.winehq.org` 限速 ~20KB/s，230MB 需 2h） | 改用清华镜像 `mirrors.tuna.tsinghua.edu.cn/wine-builds`（10MB/s，快 500×） |
 | 卸载 wine 9 → 精确装 wine 10.0（全包锁版本，避免 `--install-recommends` 把 amd64 拉到 11.0 冲突） | ✅ `wine-10.0` |
-| 重建 prefix（`/root/.wine10-elecmini`）+ 重跑决策逻辑 | ✅ L0/L1/L2 判定与 wine 9 一致 |
+| 重建 prefix（`~/.wine10-elecmini`）+ 重跑决策逻辑 | ✅ L0/L1/L2 判定与 wine 9 一致 |
 | standalone 离线包（175MB，4.6MB/s 下载成功）重试安装 | ❌ 仍 `0x80040708`，排除网络因素 |
 | 补 OOBE 键 + Win7 prefix | ❌ `0x80040c01`，Omaha 状态机仍不完整 |
 

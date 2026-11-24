@@ -105,7 +105,7 @@ decide（gate.probe / win_gate / 注入）
 ## 七、复现命令
 
 ```bash
-cd /workspace/elecmini
+cd <项目根目录>
 
 # 双 SKU 打包（Linux）
 node pack/build.js --sku both --target linux-x64 --out dist
