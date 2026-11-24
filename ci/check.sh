@@ -47,12 +47,17 @@ fi
 # 7.5) 官方 API 表面基线（Electron 官方 electron.d.ts vs 实际导出）
 # 注：默认只报告不判定（覆盖率低是已知阶段性事实），核心模块全导出作为硬门槛
 if [ -f migrate/api-surface/audit.js ] && [ -f test-app/node_modules/electron/electron.d.ts ]; then
+  run "契约补齐层单测" node migrate/api-surface/contract-fill.test.js
   run "官方 API 表面基线" node migrate/api-surface/audit.js
-  run "核心模块完整导出" node -e "
+  run "核心契约完整覆盖" node -e "
     const r=require('./migrate/api-surface/results/api-surface.json');
     const c=r.summary.core;
-    if(c.present!==c.total){console.error('核心模块未全导出 '+c.present+'/'+c.total);process.exit(1)}
-    console.log('核心模块 '+c.present+'/'+c.total+' 全部导出');
+    if(c.present!==c.total||c.missingMembers>0){
+      console.error('核心契约未全覆盖：模块 '+c.present+'/'+c.total+'，缺失成员 '+c.missingMembers);
+      process.exit(1)
+    }
+    const t=r.tiers||{};
+    console.log('核心契约 '+c.total+'/'+c.total+' 全覆盖（native='+(r.nativeBaseline?Math.max(0,c.total*1-r.nativeBaseline.missingMembers):'?')+' / mirror='+(t.mirror||0)+' / degraded='+(t.degraded||0)+'）');
   "
 fi
 

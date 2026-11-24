@@ -135,6 +135,29 @@ function probeElecMini() {
   return surface;
 }
 
+/** 读取 contract-fill 的分级登记（补齐层 apply 后可用） */
+function readTiers() {
+  try {
+    const { registry } = require(path.join(ROOT, 'runtime/contract-fill'));
+    const tiers = { native: 0, mirror: 0, degraded: 0 };
+    const reasons = {};
+    for (const [mod, members] of Object.entries(registry)) {
+      for (const [name, info] of Object.entries(members)) {
+        const level = info.level === 'degraded' ? 'degraded'
+          : info.level === 'mirror' ? 'mirror' : 'native';
+        tiers[level]++;
+        if (level === 'degraded') {
+          const key = (info.reason || '').split(':')[0];
+          reasons[key] = (reasons[key] || 0) + 1;
+        }
+      }
+    }
+    return { tiers, reasons, registry };
+  } catch (_) {
+    return { tiers: { native: 0, mirror: 0, degraded: 0 }, reasons: {}, registry: {} };
+  }
+}
+
 function compare(official, actual) {
   const rows = official.exports.map((ex) => {
     const present = Object.prototype.hasOwnProperty.call(actual, ex.name);
@@ -216,11 +239,38 @@ function toMarkdown(report) {
   if (!absent.length) md.push('无');
   else md.push(absent.map((r) => `\`${r.name}\`(${r.kind})`).join('、'));
   md.push('');
+  // 三级语义分布（诚实拆分 100% 表面覆盖）
+  if (report.tiers) {
+    const t = report.tiers;
+    const nb = report.nativeBaseline;
+    // 原生数 = 核心官方成员总数 - 补齐的 mirror/degraded - 原生基线缺失数（近似）
+    const coreTotal = report.rows.filter((x) => x.core).reduce((a, x) => a + x.officialMembers, 0);
+    const nativeCount = nb ? Math.max(0, coreTotal - nb.missingMembers) : t.native;
+    const pct = (n) => coreTotal ? +(n / coreTotal * 100).toFixed(1) : 0;
+    md.push('## 语义分级（100% 表面覆盖的诚实拆分）');
+    md.push('');
+    md.push('| 级别 | 成员数 | 占比 | 含义 |');
+    md.push('|---|---:|---:|---|');
+    md.push(`| 🟢 native 原生 | ${nativeCount} | ${pct(nativeCount)}% | 真实 host 能力（补齐前即存在） |`);
+    md.push(`| 🟡 mirror 状态镜像 | ${t.mirror} | ${pct(t.mirror)}% | set 写入 / get 读回，有真实状态效果但非原生 |`);
+    md.push(`| 🔴 degraded 降级桩 | ${t.degraded} | ${pct(t.degraded)}% | 平台专属/同步 API/依赖 Chromium 网络栈，返回安全默认值 |`);
+    md.push('');
+    md.push(`> **重要**：表面覆盖率 100% 指所有官方成员名均存在；其中 **native 原生仅 ${nativeCount} 个（${pct(nativeCount)}%）**。补齐层（mirror + degraded 共 ${t.mirror + t.degraded} 个）是避免 TypeError 的兼容层，**不等价于功能完整**。原生基线实测成员覆盖率 ${nb ? nb.memberCoverage + '%' : '未知'}。`);
+    if (Object.keys(report.degradeReasons || {}).length) {
+      md.push('');
+      md.push('降级原因分布：');
+      md.push('');
+      for (const [k, v] of Object.entries(report.degradeReasons)) md.push(`- ${k}: ${v}`);
+    }
+    md.push('');
+  }
+
   md.push('## 说明');
   md.push('');
   md.push('- 「核心声明集」是 ElecMini 文档声称原生支持的一组模块，用于衡量承诺兑现度。');
   md.push('- 全量对比包含大量平台专属/新增 API（如 MSIX、Apple 面板、AI 相关），缺失不等同于缺陷。');
   md.push('- 本检测只比对**API 表面**（名称是否存在），不验证行为语义；行为由差分契约与迁移探针覆盖。');
+  md.push('- **语义分级**由 `runtime/contract-fill.js` 的登记生成，用于区分真实实现与兼容补齐，防止刷指标。');
   return md.join('\n') + '\n';
 }
 
@@ -232,6 +282,28 @@ function main() {
   const official = parseOfficial(DTS);
   const actual = probeElecMini();
   const report = compare(official, actual);
+
+  // 三级语义分级：从补齐层登记读取
+  const tierInfo = readTiers();
+  report.tiers = tierInfo.tiers;
+  report.degradeReasons = tierInfo.reasons;
+
+  // 原生基线：子进程关闭补齐层，测出补齐前真实覆盖率
+  // --native-only 是子进程标记，跳过再次 spawn 避免递归
+  if (!process.argv.includes('--native-only')) try {
+    const { execFileSync } = require('child_process');
+    const raw = execFileSync(process.execPath, [__filename, '--native-only', '--out', path.join(OUT_DIR, 'native')], {
+      env: { ...process.env, ELECMINI_NO_CONTRACT_FILL: '1' },
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const mm = raw.match(/核心集：(\d+)\/(\d+) 模块已导出，缺失 (\d+) 成员/);
+    if (mm) report.nativeBaseline = {
+      modulesPresent: +mm[1], modulesTotal: +mm[2], missingMembers: +mm[3],
+      memberCoverage: +(100 * (1 - +mm[3] / Math.max(1, official.exports
+        .filter((e) => CORE.has(e.name)).reduce((a, e) => a + e.members.length, 0)))).toFixed(1),
+    };
+  } catch (_) {}
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, 'api-surface.json'), JSON.stringify(report, null, 2));
   fs.writeFileSync(path.join(OUT_DIR, 'api-surface.md'), toMarkdown(report));
@@ -240,6 +312,13 @@ function main() {
   console.log(`[audit] Electron ${report.electronVersion} 基线：${report.baseline.modules} 导出 / ${report.baseline.members} 成员`);
   console.log(`[audit] 核心集：${c.present}/${c.total} 模块已导出，缺失 ${c.missingMembers} 成员`);
   console.log(`[audit] 覆盖率：模块 ${report.summary.coreModuleCoverage}% / 成员 ${report.summary.coreMemberCoverage}%`);
+  const t = report.tiers;
+  if (t && (t.mirror || t.degraded)) {
+    const nb = report.nativeBaseline;
+    const coreTotal = report.rows.filter((x) => x.core).reduce((a, x) => a + x.officialMembers, 0);
+    const nativeCount = nb ? Math.max(0, coreTotal - nb.missingMembers) : t.native;
+    console.log(`[audit] 语义分级：native=${nativeCount} / mirror=${t.mirror} / degraded=${t.degraded}（原生基线成员覆盖率 ${nb ? nb.memberCoverage : '?'}%）`);
+  }
   console.log(`[audit] 报告：${path.relative(ROOT, path.join(OUT_DIR, 'api-surface.md'))}`);
   // 默认只报告（当前覆盖率低属已知阶段性事实，不应让 CI 变红）；
   // --strict 模式才把核心缺口视为失败，供后续提升门槛时启用。

@@ -42,6 +42,15 @@ node migrate/api-surface/audit.js --out /tmp/api-surface
 - **只比对表面**：名称 / 成员存在性；行为语义由差分契约（`contract/`）、迁移探针（`migrate/probes/`）与完整 UI 验收（`migrate/full-app/verify.js`）覆盖。
 - CI 中默认"只报告不判定"，另设"核心模块完整导出"为硬门槛。
 
+## 契约补齐层（surface → 100%）
+
+- `gen-contract.js`：从官方 `electron.d.ts` 生成静态数据 `runtime/contract-data.js`（生产环境无需携带 d.ts）。升级 electron 后需重跑。
+- `runtime/contract-fill.js`：加载 shim 时对缺失成员分级补齐——`mirror`（状态镜像，set/get 有真实效果）/ `degraded`（平台专属、同步 API、Chromium 网络栈依赖，返回安全默认值并登记原因）。原生已实现成员跳过，不覆盖。
+- `contract-fill.test.js`（6/6）：验证表面覆盖、原生方法未被覆盖、状态镜像、降级桩、三级登记。
+- 关闭补齐：`ELECMINI_NO_CONTRACT_FILL=1`（审计原生基线时用）。
+
+审计工具会输出**语义分级**：表面 100% 中 native 仅 18.8%，其余是 mirror/degraded 兼容层——防止把"名字都存在"误读为"功能完整"。
+
 ## 官方 spec 用例
 
 `official-specs/api-clipboard.spec.ts` 是从 Electron main 分支下载的官方用例（MIT），用于对照"官方认为一个 API 应覆盖哪些形态"。下载命令：

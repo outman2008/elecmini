@@ -50,7 +50,7 @@ const nativeImage = {
   createFromPath: _nativeFromPath,
 };
 
-module.exports = {
+const shimExports = {
   app,
   BrowserWindow,
   ipcMain,
@@ -73,3 +73,11 @@ module.exports = {
   powerMonitor,
   systemPreferences,
 };
+
+// P5：官方契约补齐层——对文档声明但未实现的成员补状态镜像/降级桩并登记分级。
+// 设 ELECMINI_NO_CONTRACT_FILL=1 可关闭（用于审计"原生覆盖率"基线对比）。
+if (!process.env.ELECMINI_NO_CONTRACT_FILL) {
+  require('./contract-fill').apply(shimExports);
+}
+
+module.exports = shimExports;

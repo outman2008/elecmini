@@ -82,3 +82,42 @@ ElecMini 是 tao+wry + Node sidecar，没有 Electron 二进制与内部模块�
 2. **逐步收紧门槛**：当前核心成员覆盖率 18.8%，`--strict` 关闭。建议按真实应用需求选取 Top-N 高频 API 作为硬门槛，而不是追求 100% 全量覆盖。
 3. **优先级来源**：官方 spec 中各 `api-*.spec.ts` 的用例数量（如 BrowserWindow 519、clipboard 44）可作为"哪些 API 值得优先对齐"的客观依据。
 4. **边界诚实**：本检测只覆盖 **API 表面**（名称/成员存在性），行为语义仍由差分契约（40/40）、迁移探针（28/28）与完整 UI 验收（6/6）覆盖；三者互补，不能互相替代。
+
+## 七、追加：把表面覆盖率推到 100%（及诚实的语义拆分）
+
+> 本节记录后续"尝试把 API 成员覆盖率提到 100%"的工作。上文 18.8% 是**补齐前的原生基线**，本节 100% 是**补齐后的表面覆盖**，两者口径不同，不可混用。
+
+### 为什么不能只追求数字
+
+"100%"有两种含义，差别是本质性的：
+
+| 口径 | 可达性 | 说明 |
+|---|---|---|
+| **表面 100%**（成员名都存在） | ✅ 可达成 | 用补齐层让官方声明的每个成员都在 shim 上存在，迁移应用不再因 `TypeError: xxx is not a function` 崩溃 |
+| **语义 100%**（每个 API 都有真实行为） | ❌ 架构上不可能 | `setTouchBar`/`setActivationPolicy` 是 macOS 专属；`sendSync` 类同步 API 与异步 RPC 架构冲突；`session.webRequest` 依赖 Chromium 网络栈 |
+
+若只把成员名补齐就把数字报成"100% 兼容"，与之前批评的"手写 STATUS 掩盖 clipboard 断链"是同一种自欺。因此补齐层**同时输出语义分级**。
+
+### 补齐层的三级实现
+
+`runtime/contract-fill.js` 从官方类型定义（`runtime/contract-data.js`，由 `gen-contract.js` 生成）读取全部成员，按规则分级补齐：
+
+| 级别 | 成员数 | 占比 | 实现 |
+|---|---:|---:|---|
+| 🟢 native 原生 | 96 | 18.8% | 补齐前即存在的真实 host 能力 |
+| 🟡 mirror 状态镜像 | 331 | 64.9% | `set*` 写入本地状态、`get*/is*` 读回，有真实状态效果但非原生（如 `app.name`、`setBounds`/`getBounds`） |
+| 🔴 degraded 降级桩 | 98 | 19.2% | 返回安全默认值并登记原因：platform-specific(41) / chromium-net(47) / native-render(7) / sync-api(3) |
+
+**表面覆盖率 100%（20/20 模块、510/510 核心成员名齐全）**，但真实原生能力仍只有 18.8%。补齐的价值是**消除迁移崩溃点**，不是假装功能完整。
+
+### 关键修复与回归防护
+
+- 补齐层初版曾用 `member in class` 判断存在性，误把 `BrowserWindow.close/loadURL/setTitle` 等原生原型方法当成缺失、用降级桩覆盖，导致完整 UI 验证从 6/6 跌到 1/6。已改为对 class 检查 `prototype`，恢复 6/6。
+- 新增 `migrate/api-surface/contract-fill.test.js`（6/6）：验证表面覆盖、原生方法未被覆盖、状态镜像读写、降级桩存在、三级登记完整。
+- CI 中"核心模块完整导出"升级为"核心契约完整覆盖"（成员缺失必须为 0），全套 **16/16 通过**。
+
+### 结论
+
+- **表面 100% 已达成并可回归防护**：官方声明的核心成员在 shim 上全部存在，迁移应用不会因 API 缺失崩溃。
+- **真实兼容仍分层可见**：native 18.8% / mirror 64.9% / degraded 19.2%，由审计工具自动拆分，杜绝刷指标。
+- **升级 electron 版本时**：重跑 `node migrate/api-surface/gen-contract.js` 重新生成官方契约数据，再跑 `audit.js`，新增成员会自动进入补齐层并分级。
