@@ -24,7 +24,7 @@ function record(mod, member, level, reason) {
 /**
  * 按名称判定降级原因；返回 null 表示可走状态镜像。
  *
- * P6 治理原则（见 migrate/REPORT-official-api-baseline.md）：
+ * 治理原则（另见 docs/unsupported-apis.md，分级由 migrate/api-surface/audit.js 生成）：
  *   - 误分类修正：FullScreen/Kiosk 等 tao 原生通用窗口能力已由 runtime 模块真实实现，
  *     不再落入降级（真实实现的成员在 fillObject 中会被 `member in target` 跳过）。
  *   - 平台细分：platform-specific 标注具体平台，便于按发版目标评估。

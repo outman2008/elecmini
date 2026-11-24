@@ -1,18 +1,50 @@
+<div align="center">
+
 # ElecMini
 
-> 保留 Electron 的 JS API 契约，去掉 Chromium，改用**系统 WebView**（WebView2 / WKWebView / WebKitGTK）渲染的桌面运行时。
+**保留 Electron 的 JS API 契约，去掉 Chromium，改用系统 WebView 渲染的桌面运行时。**
 
-ElecMini 不是 Electron 的分支，而是一套**兼容层**：业务代码继续 `require('electron')`，底层由 Rust（tao + wry）宿主 + Node sidecar 承载。
+[![CI](https://github.com/outman2008/elecmini/actions/workflows/ci.yml/badge.svg)](https://github.com/outman2008/elecmini/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/elecmini.svg)](https://www.npmjs.com/package/elecmini)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#平台支持)
 
-## 核心结论（P0 实测，详见 `docs/p0/README.md`）
+[English](./README.en.md) · 中文
 
-| 指标 | 结果 | 说明 |
-|---|---|---|
-| 安装包体 | **显著下降** | 不再随包分发 Chromium |
-| 冷启动 | **更快** | 无需初始化完整 Chromium |
-| 内存 | **基本无收益** | 系统 WebView 引擎仍是固定成本，240MB 级"引擎税"无法消除 |
+</div>
 
-> 如果你的目标是"大幅降内存"，ElecMini 不是答案；目标是"减包体、减启动开销、复用系统渲染器"才成立。
+---
+
+## ElecMini 是什么
+
+ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代码继续 `require('electron')`，底层由 **Rust 宿主（tao 窗口 + wry WebView）+ Node sidecar** 承载，渲染改用**系统 WebView**（WebView2 / WKWebView / WebKitGTK），不再随应用分发 Chromium。
+
+它解决的是一个明确的问题：如果你要的是**更小的安装包、更快的冷启动、复用系统渲染器**，但又不愿重写已有 Electron 应用的 API 调用，ElecMini 提供一条低改造成本的迁移路径。
+
+> ⚠️ **先读这句再决定**：ElecMini 的目标是减包体、减启动开销，不是降内存。实测 PSS 约为 Electron 的 **107%**——系统 WebView 引擎仍是固定成本，240MB 级"引擎税"无法消除。如果你的第一目标是"大幅降内存"，本项目不是答案。
+
+## 特性
+
+- **API 契约兼容**：基于 Electron 官方 `electron.d.ts`（45.x）做表面审计，核心 20 个模块、984 个成员**表面 100% 覆盖**，并按语义严格分级（native / mirror / degraded）。
+- **系统 WebView 渲染**：Windows 用 WebView2、macOS 用 WKWebView、Linux 用 WebKitGTK，不打包 Chromium。
+- **Node sidecar 进程模型**：Node 跑业务主进程、Rust 跑窗口与 WebView，两者通过 JSONL JSON-RPC 通信。
+- **迁移评估工具链**：静态 AST 扫描 → Go/No-Go 预判 → 自动生成运行时探针 → 差分契约测试，把"能不能迁"变成可复现流程。
+- **启动门禁与降级**：按系统 WebView 版本分级（L0/L1/L2/L3），缺失能力时明确提示，绝不白屏。
+- **打包与分发**：Slim / Full 双 SKU、代码签名、自动更新（含验签与回滚）、灰度分桶。
+- **安全加固**：host 侧导航 origin 锚定 + IPC 来源校验，可选 `ELECMINI_STRICT_NAV=1` 严格阻断异源导航。
+
+## 与 Electron / Tauri 的对比
+
+| 维度 | Electron | Tauri | ElecMini |
+|---|---|---|---|
+| 渲染引擎 | 内置 Chromium | 系统 WebView | 系统 WebView |
+| 主进程语言 | Node.js | Rust | Node.js（sidecar） |
+| 安装包体 | 大（含 Chromium） | 小 | 小 |
+| 内存（PSS） | 基线 | 较低 | ≈ Electron 107%（无内存收益） |
+| Electron JS API | 原生 | 无，需重写 | 兼容层（表面 100%，分级语义） |
+| 现有 Electron 应用迁移 | — | 需重写主进程 | 低改造成本（复用 `require('electron')`） |
+
+一句话定位：**Tauri 面向新写应用（Rust 主进程），ElecMini 面向存量 Electron 应用的低成本迁移。**
 
 ## 架构
 
@@ -27,56 +59,72 @@ ElecMini 不是 Electron 的分支，而是一套**兼容层**：业务代码继
 ```
 
 - **渲染层 preload**：`runtime/preload-runtime.js` 经 initialization script 注入，提供受限 `require('electron')` / `contextBridge` / `ipcRenderer`。
-- **契约补齐层**：`runtime/contract-fill.js` 让官方 `electron.d.ts` 声明的成员都存在，并严格三级分级（native / mirror / degraded）。
+- **契约补齐层**：`runtime/contract-fill.js` 让官方 `electron.d.ts` 声明的成员都存在，并严格标记 native / mirror / degraded 三级。
 - **迁移工具**：`migrate/assess.js` 静态扫描目标项目 → Go/No-Go 预判；`migrate/gen-probe.js` 生成运行时探针。
 
 ## 快速开始
 
-前置：Node 22、Rust stable、Linux 需 `libwebkit2gtk-4.1-dev`（macOS/Windows 用系统 WebView）。
+前置：Node 22、Rust stable；Linux 需 `libwebkit2gtk-4.1-dev`（macOS / Windows 用系统自带 WebView）。
 
 ```bash
-# 1) 构建 Rust host
+# 1) 安装
+npm install elecmini
+# 或克隆源码
+git clone https://github.com/outman2008/elecmini.git && cd elecmini
+
+# 2) 构建 Rust host
 cargo build --release -p elecmini-host --bin elecmini-host
 
-# 2) 运行一个目标应用（目录内需有 package.json / main.js）
+# 3) 运行一个目标应用（目录内需有 package.json / main.js）
 node runtime/launcher.js <appDir>
 
-# 3) 迁移评估（静态扫描）
+# 4) 迁移评估（静态扫描）
 node migrate/assess.js --project <appDir> --out migrate/reports/<name>
 
-# 4) 全套检查
-bash ci/check.sh            # 全量（含 E2E，需 xvfb-run）
-bash ci/check.sh --quick    # 跳过编译/E2E
+# 5) 检查
+bash ci/check.sh            # 全量（含 E2E，Linux 需 xvfb-run）
+bash ci/check.sh --quick    # 快速：跳过编译 / E2E
 ```
 
-## 目录结构
+## API 支持分级
 
-| 目录 | 职责 |
-|---|---|
-| `runtime/` | Node sidecar：launcher、shim、preload、契约补齐层 |
-| `host/` | Rust 宿主（tao 窗口 + wry WebView + JSON-RPC 分发） |
-| `shim/` | IPC 类型封装、静态 API 扫描器 |
-| `pack/` | 打包、签名、更新、灰度、门禁遥测 |
-| `contract/` | Electron vs ElecMini 差分契约测试 |
-| `migrate/` | 迁移评估工具、探针、报告 |
-| `docs/` | 各阶段设计与验收文档；`docs/changelog/` 为交付记录 |
+表面覆盖 ≠ 语义完整。基于 Electron 45.4.1 官方类型定义审计，共 984 个成员：
 
-## 状态与已知边界
+| 分级 | 数量 | 含义 |
+|---|---|---|
+| **native** | 113 | 真原生实现，行为对齐 Electron |
+| **mirror** | 327 | 状态镜像 / 轻量封装，可用性高 |
+| **degraded** | 85 | 降级桩：返回类型正确的安全默认值，或平台专属边界 |
 
-- 已实现：P0 可行性、P1 核心闭环、P2 能力补齐、P3 打包分发骨架、P4 一致性治理、P6 API 降级治理、P7 双真实项目实测。
-- **API 表面 100% 覆盖 ≠ 语义完整**：分级为 native ≈113 / mirror ≈327 / degraded ≈85（见 `migrate/REPORT-official-api-baseline.md`）。
-- 真实能力缺口（明确不支持）：同步 API（`sendSync`/`showMessageBoxSync` 等，返回安全默认值）、Chromium 扩展体系、`@electron/remote`。完整清单见 [`docs/unsupported-apis.md`](./docs/unsupported-apis.md)。
-- 平台验证：CI 三平台（Linux 全量含差分/E2E；Windows/macOS 编译+单测）；Windows/macOS 的运行时 E2E 需在对应平台机器验证。
-- 安全模型：**无 Electron 级 contextIsolation**（preload 与页面同 realm）；隔离依赖 host 侧导航 origin 锚定 + IPC 来源校验（`ELECMINI_STRICT_NAV=1` 启用严格导航阻断）。
+分级由 `node migrate/api-surface/audit.js` 实时生成；完整不支持清单见 [`docs/unsupported-apis.md`](./docs/unsupported-apis.md)。迁移前务必运行 `node migrate/assess.js --project <appDir>`。
+
+## 平台支持
+
+| 平台 | WebView | 编译 | E2E 验证 |
+|---|---|---|---|
+| Windows | WebView2 | ✅ | ✅ 真机全套（含安全加固 22/22、差分契约 42/42） |
+| macOS | WKWebView | ✅ | CI 编译 + 单测；运行时需 macOS 机器 |
+| Linux | WebKitGTK | ✅ | ✅ 全量（差分 / E2E） |
+
+## 已知边界
+
+- **无 Electron 级 contextIsolation**：preload 与页面同 realm；隔离依赖 host 侧 origin 锚定 + IPC 来源校验。**不要**把它当作安全沙箱使用。
+- **同步 API 降级**：`sendSync` 返回 `undefined`、`showMessageBoxSync` 返回 `defaultId` 等——类型正确但不是真实交互结果，需改写为异步。
+- **架构不可补**：Chromium 扩展体系、`@electron/remote` 明确不支持。
+- **CDP / DevTools** 在 Windows WebView2 可用，macOS / Linux 无等价实现。
+- **L0 ≥95% 的 Go/No-Go 结论**仍需生产遥测样本（当前本地样本远低于统计最小样本 385）。
 
 ## 文档索引
 
-- 技术方案与路线图：`ElecMini-技术方案与路线图-v1.2.md`
-- P0 可行性 / 内存分析：`docs/p0/`
-- 迁移评估：`migrate/README.md`、`migrate/REPORT-two-apps.md`
-- 官方 API 基线：`migrate/REPORT-official-api-baseline.md`
-- 交付记录：`docs/changelog/`
+| 主题 | 文档 |
+|---|---|
+| 迁移评估手册 | [`migrate/README.md`](./migrate/README.md) |
+| 不支持 API 清单 | [`docs/unsupported-apis.md`](./docs/unsupported-apis.md) |
+| API 表面审计工具 | [`migrate/api-surface/audit.js`](./migrate/api-surface/audit.js) |
+| 版本变更记录 | [`CHANGELOG.md`](./CHANGELOG.md) |
+| 贡献指南 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
+| 安全策略 | [`SECURITY.md`](./SECURITY.md) |
 
 ## License
 
-MIT，见 [LICENSE](./LICENSE)。
+[MIT](./LICENSE) © ElecMini contributors

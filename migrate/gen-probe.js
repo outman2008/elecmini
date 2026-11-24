@@ -3,8 +3,9 @@
  * P7 — 真实应用迁移探针生成器
  *
  * 输入：migrate/reports/<app>/scan.json（由 scan-api.js 产出）
- * 输出：migrate/probes/<app>/main.js —— 对扫描到的每个 Electron API 调用点，
- *       生成一条"存在性 + 可调用性"探针，在 ElecMini runtime 下实跑。
+ * 输出：<out>/main.js（默认 migrate/probes/<app>/）—— 对扫描到的每个 Electron API
+ *       调用点，生成一条"存在性 + 可调用性"探针，在 ElecMini runtime 下实跑。
+ *       probes / reports 均为运行时产物目录，不随仓库分发。
  *
  * 目的：把"静态扫描到"与"运行时真能用"对齐，避免 scan-api 误报
  * （如 clipboard 曾扫描为 ✅ 但入口未导出的断链）。
@@ -21,7 +22,7 @@ const arg = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] 
 const app = arg('--app', null);
 if (!app) { console.error('用法: node migrate/gen-probe.js --app <app目录名>'); process.exit(1); }
 
-// 优先读探针目录内随源码入库的 scan.json（可复现），其次读被 gitignore 的 reports 目录
+// 优先读探针目录内已有的 scan.json，其次读 assess.js 产出的 reports 目录
 const inProbe = path.join(ROOT, 'migrate/probes', app, 'scan.json');
 const inReports = path.join(ROOT, 'migrate/reports', app, 'scan.json');
 const scanPath = fs.existsSync(inProbe) ? inProbe : inReports;

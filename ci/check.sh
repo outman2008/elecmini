@@ -131,25 +131,6 @@ if [ "$QUICK" -eq 0 ]; then
     run "P1 主流程 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js test-app-p1 2>&1 | grep -q PING_RESULT'
     # 11) P2 全模块 E2E
     run "P2 全模块 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js test-app-p2 2>&1 | grep -q safeStorage'
-    # 12) 迁移探针：executeJavaScript 返回值语义（Electron 兼容，非 {ok,value} 信封）
-    if [ -d migrate/probes/electron-api-demos ]; then
-      run "executeJavaScript 返回值" bash -c '
-        OUT=$(mktemp --suffix=.json)
-        ELECMINI_AUTOTEST=1 MIGRATE_OUT="$OUT" timeout 30 xvfb-run -a node runtime/launcher.js migrate/probes/electron-api-demos >/dev/null 2>&1
-        node -e "
-          const d=require(process.argv[1]); const c=d.checks;
-          const ok = c[\"execJS.number\"]?.value===3
-            && c[\"execJS.string\"]?.value===\"hello-elecmini\"
-            && c[\"execJS.object\"]?.value?.a===1
-            && c[\"preload.contextBridge\"]?.value===\"object\";
-          process.exit(ok?0:1);
-        " "$OUT"
-      '
-      # 13) 完整 UI 全流程（electron-api-demos 适配后真实渲染 + 交互）
-      if [ -f migrate/full-app/verify.js ]; then
-        run "完整 UI 全流程" bash -c 'timeout 90 xvfb-run -a node migrate/full-app/verify.js 2>&1 | tail -10; test ${PIPESTATUS[0]} -eq 0'
-      fi
-    fi
   elif [ "$IS_WINDOWS" -eq 1 ]; then
     # Windows 原生桌面 + WebView2：不需要 xvfb，真机跑全部 E2E
     run "门禁真机探测(L0)" node -e 'const p=require("./runtime/gate").probe(); if(p.level!=="L0"){console.error(p);process.exit(1)} console.log(p)'

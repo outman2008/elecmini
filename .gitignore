@@ -11,11 +11,7 @@ node_modules/
 # 打包产物与更新清单
 dist/
 
-# 截图对比候选/结果（基线保留，候选与报告为运行时生成）
-visual/candidates/
-visual/results/
-
-# 兼容基线/契约/遥测运行时结果（保留 .gitkeep 结构，结果文件忽略）
+# 兼容基线/契约/遥测运行时结果（结果文件忽略）
 compat/results/*.json
 contract/results/elecmini.json
 contract/results/electron.json
@@ -23,18 +19,10 @@ contract/results/diff-report.json
 pack/webview-versions.jsonl
 
 # 验收/门禁运行时产物（可再生成，不入库）
-docs/p4/gate-distribution-report.json
-docs/p4/gray-report.json
-docs/acceptance/gate-distribution-report.json
-docs/acceptance/telemetry/gate-paths.jsonl
-docs/p0/api-call-sites.json
-
-# 真实应用迁移评估产物（含应用源码路径与业务信息，不入库）
-migrate/reports/
-
-# 完整 UI 验证：目标应用原始副本与适配生成物（体积大、可再生成，不入库）
-migrate/full-app/electron-api-demos/
-migrate/full-app/electron-api-demos-adapted/
+gate-distribution-report.json
+gray-report.json
+api-call-sites.json
+gate-paths.jsonl
 
 # 官方 API 表面检测的运行时产物（由 audit.js 重新生成）
 migrate/api-surface/results/

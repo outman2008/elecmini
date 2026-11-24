@@ -1,7 +1,7 @@
 # ElecMini 不支持 / 降级 API 清单
 
 > 本清单回答一个核心问题：**哪些 Electron API 在 ElecMini 上不是真正可用？**
-> 与 `migrate/REPORT-official-api-baseline.md` 的分级统计配套（native / mirror / degraded）。
+> 分级统计（native / mirror / degraded）由 `node migrate/api-surface/audit.js` 实时生成。
 > 迁移前请用 `node migrate/assess.js --project <app>` 扫描调用点，本文件解释扫描结果的含义。
 
 ## 一、架构不可补（必须改写调用方）

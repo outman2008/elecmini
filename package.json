@@ -1,13 +1,67 @@
 {
   "name": "elecmini",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Electron API contract with system WebView rendering (tao + wry + Node sidecar)",
+  "version": "1.0.0",
+  "description": "Electron API contract with system WebView rendering (tao + wry + Node sidecar) — drop Chromium, keep require('electron').",
   "license": "MIT",
+  "author": "ElecMini contributors",
+  "homepage": "https://github.com/outman2008/elecmini#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/outman2008/elecmini.git"
+  },
+  "bugs": {
+    "url": "https://github.com/outman2008/elecmini/issues"
+  },
+  "keywords": [
+    "electron",
+    "webview",
+    "tauri",
+    "wry",
+    "desktop",
+    "chromium-free",
+    "electron-alternative",
+    "compatibility-layer"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "LICENSE",
+    "Cargo.toml",
+    "runtime/",
+    "host/",
+    "launcher/",
+    "shim/src/",
+    "pack/*.js",
+    "pack/config.json",
+    "pack/gray-config.json",
+    "pack/templates/",
+    "ci/check.sh",
+    "contract/*.js",
+    "contract/probe-app/",
+    "compat/baseline.json",
+    "compat/check.js",
+    "compat/feature-probe.js",
+    "compat/probe.html",
+    "migrate/assess.js",
+    "migrate/gen-probe.js",
+    "migrate/api-surface/audit.js",
+    "migrate/api-surface/gen-contract.js",
+    "migrate/api-surface/contract-fill.test.js",
+    "migrate/api-surface/official-specs/",
+    "migrate/README.md",
+    "docs/unsupported-apis.md"
+  ],
   "scripts": {
     "lint": "eslint runtime shim/src pack contract",
     "format:check": "prettier --check \"runtime/**/*.js\" \"shim/src/**/*.js\" \"pack/**/*.js\" \"contract/**/*.js\"",
-    "test": "bash ci/check.sh --quick"
+    "test": "bash ci/check.sh --quick",
+    "test:full": "bash ci/check.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

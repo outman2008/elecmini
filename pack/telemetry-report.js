@@ -22,7 +22,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--min-samples') opts.minSamples = +argv[++i];
   }
   opts.dir = opts.dir || process.env.ELECMINI_TELEMETRY_DIR || path.join(require('os').homedir(), '.elecmini', 'telemetry');
-  opts.out = opts.out || path.resolve('docs/p4/gate-distribution-report.json');
+  opts.out = opts.out || path.resolve('gate-distribution-report.json');
   return opts;
 }
 

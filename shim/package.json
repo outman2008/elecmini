@@ -1,9 +1,32 @@
 {
   "name": "@elecmini/shim",
-  "version": "0.1.0",
-  "description": "ElecMini electron API compatibility shim (P0 skeleton)",
+  "version": "1.0.0",
+  "description": "ElecMini electron API compatibility shim and static API scanner.",
   "type": "module",
   "license": "MIT",
+  "author": "ElecMini contributors",
+  "homepage": "https://github.com/outman2008/elecmini#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/outman2008/elecmini.git",
+    "directory": "shim"
+  },
+  "bugs": {
+    "url": "https://github.com/outman2008/elecmini/issues"
+  },
+  "keywords": [
+    "electron",
+    "shim",
+    "compatibility",
+    "api-scanner",
+    "elecmini"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src/"
+  ],
   "scripts": {
     "scan": "node src/scan-api.js --project ../test-app",
     "test:ipc": "node src/ipc-types.test.js"
