@@ -22,6 +22,9 @@ contract/results/electron.json
 contract/results/diff-report.json
 pack/webview-versions.jsonl
 
+# 真实应用迁移评估产物（含应用源码路径与业务信息，不入库）
+migrate/reports/
+
 # 系统/编辑器
 .DS_Store
 *.swp
