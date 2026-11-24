@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ElecMini Minimal</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 32px; background: #0b1220; color: #e2e8f0; }
+    h1 { color: #38bdf8; }
+    button { padding: 8px 16px; background: #2563eb; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+    pre { background: #16213a; padding: 14px; border-radius: 6px; min-height: 48px; }
+  </style>
+</head>
+<body>
+  <h1>ElecMini Minimal</h1>
+  <p>点击按钮，经 preload 的 contextBridge 触发一次 IPC 往返。</p>
+  <button id="go">ping</button>
+  <pre id="out">waiting…</pre>
+  <script>
+    var out = document.getElementById('out');
+    document.getElementById('go').addEventListener('click', function () {
+      window.api.ping('renderer').then(function (r) { out.textContent = r; })
+        .catch(function (e) { out.textContent = 'error: ' + e; });
+    });
+  </script>
+</body>
+</html>

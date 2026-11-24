@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-24
+
+Packaging and usability fixes for the first public release.
+
+### Added
+
+- **CLI entry point** `elecmini` (`bin/elecmini.js`) with `run` / `assess` / `probe` / `audit` / `check` subcommands, plus `main` field pointing at the shim. `npm install elecmini` now yields a usable command instead of a package with no entry.
+- **`examples/minimal/`**: a runnable 4-file example (one window + one IPC round-trip), verified end-to-end on WebKitGTK.
+- **Per-directory READMEs**: `runtime/`, `host/`, `pack/`, `contract/`, `compat/`, `shim/`, `tests/`, `ci/`.
+
+### Changed
+
+- `Cargo.toml` workspace version synced to `1.0.0` (was `0.1.0`, out of step with npm).
+- Test fixtures renamed to a consistent scheme: `tests/p1|p2|s4|win|baseline` → package names `elecmini-fixture-*`, version `1.0.0`, all `private`.
+- `contract/run.js` protective timeout raised from 12s to 60s so dual cold-start does not truncate window-dependent cases.
+- README quick start now leads with the CLI and the minimal example; API tier table clarifies that 984 is the full member count and 525 is the graded core subset.
+- Platform table documents that 17 of the 42 differential cases require a display environment.
+
+### Removed
+
+- Empty `launcher/` directory (and its stale `files` entry in `package.json`).
+
+### Fixed
+
+- `Cargo.lock` is now tracked (this is an application, not a library) for reproducible builds.
+
 ## [1.0.0] - 2026-11-24
 
 First public release. ElecMini is a compatibility layer that keeps the Electron JS API

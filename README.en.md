@@ -67,34 +67,38 @@ Target app (main.js / preload.js)
 Prerequisites: Node 22, Rust stable; Linux needs `libwebkit2gtk-4.1-dev` (macOS / Windows use the built-in system WebView).
 
 ```bash
-# 1) Install
-npm install elecmini
-# or clone the source
+# 1) Clone and build the Rust host (once)
 git clone https://github.com/outman2008/elecmini.git && cd elecmini
-
-# 2) Build the Rust host
 cargo build --release -p elecmini-host --bin elecmini-host
 
-# 3) Run a target app (directory must contain package.json / main.js)
-node runtime/launcher.js <appDir>
+# 2) Run the minimal example (one window + one IPC round-trip)
+npx elecmini run examples/minimal
+# or directly:
+node runtime/launcher.js examples/minimal
 
-# 4) Migration assessment (static scan)
-node migrate/assess.js --project <appDir> --out migrate/reports/<name>
+# 3) Migration assessment: static-scan your existing Electron app
+npx elecmini assess --project <yourAppDir>
 
-# 5) Checks
-bash ci/check.sh            # full (includes E2E; needs xvfb-run on Linux)
-bash ci/check.sh --quick    # quick: skip build / E2E
+# 4) Checks
+npx elecmini check --quick     # quick: skip build / E2E
+npx elecmini check             # full (needs xvfb-run on Linux)
 ```
+
+> After install, the CLI also exposes `elecmini run / assess / probe / audit / check`; see `elecmini --help`.
+> Minimal example: [`examples/minimal/`](./examples/minimal/).
 
 ## API support tiers
 
-Surface coverage ≠ semantic completeness. Audited against Electron 45.4.1 official type definitions, 984 members total:
+Surface coverage ≠ semantic completeness. Electron 45.4.1 official type definitions contain **984 members** (50 exports). ElecMini grades the members of the **core 20 modules** semantically — 525 items in total:
 
 | Tier | Count | Meaning |
 |---|---|---|
 | **native** | 113 | Real native implementation, behavior matches Electron |
 | **mirror** | 327 | State mirror / lightweight wrapper, highly usable |
 | **degraded** | 85 | Stub returning a type-correct safe default, or a platform-specific boundary |
+
+> Note: 984 is the **full** official member count (including non-core modules); 525 is the **graded** subset of the core set.
+> Surface coverage of the core 20 modules is 100%; remaining exports outside the core set are not guaranteed.
 
 Tiers are generated live by `node migrate/api-surface/audit.js`; the full unsupported list is in [`docs/unsupported-apis.md`](./docs/unsupported-apis.md). Always run `node migrate/assess.js --project <appDir>` before migrating.
 
@@ -104,7 +108,10 @@ Tiers are generated live by `node migrate/api-surface/audit.js`; the full unsupp
 |---|---|---|---|
 | Windows | WebView2 | ✅ | ✅ Full native suite (security 22/22, differential contract 42/42) |
 | macOS | WKWebView | ✅ | CI build + unit tests; runtime needs a macOS machine |
-| Linux | WebKitGTK | ✅ | ✅ Full (differential / E2E) |
+| Linux | WebKitGTK | ✅ | ✅ Full (differential 42/42, E2E; needs `xvfb-run`) |
+
+> 17 of the 42 differential cases depend on a real window / screen / session and **must run in a display environment**
+> (Linux: `xvfb-run`; Windows: real desktop). Without a display they are not written, so only 25 cases are compared.
 
 ## Known limits
 
@@ -118,9 +125,18 @@ Tiers are generated live by `node migrate/api-surface/audit.js`; the full unsupp
 
 | Topic | Document |
 |---|---|
+| Minimal example | [`examples/minimal/`](./examples/minimal/) |
 | Migration assessment guide | [`migrate/README.md`](./migrate/README.md) |
 | Unsupported API list | [`docs/unsupported-apis.md`](./docs/unsupported-apis.md) |
 | API surface audit tool | [`migrate/api-surface/audit.js`](./migrate/api-surface/audit.js) |
+| Runtime (Node sidecar) | [`runtime/README.md`](./runtime/README.md) |
+| Native host (Rust) | [`host/README.md`](./host/README.md) |
+| Differential contract tests | [`contract/README.md`](./contract/README.md) |
+| Packaging / signing / update | [`pack/README.md`](./pack/README.md) |
+| Compatibility baseline | [`compat/README.md`](./compat/README.md) |
+| API compatibility layer & scanner | [`shim/README.md`](./shim/README.md) |
+| Test fixtures | [`tests/README.md`](./tests/README.md) |
+| Check script | [`ci/README.md`](./ci/README.md) |
 | Changelog | [`CHANGELOG.md`](./CHANGELOG.md) |
 | Contributing | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
 | Security policy | [`SECURITY.md`](./SECURITY.md) |

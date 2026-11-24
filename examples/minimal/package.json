@@ -1,0 +1,7 @@
+{
+  "name": "elecmini-example-minimal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ElecMini minimal example: one window + one IPC round-trip",
+  "main": "main.js"
+}

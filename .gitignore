@@ -2,8 +2,8 @@
 # 只提交源码、文档、配置与测试；构建产物/依赖不入库。
 
 # Rust 构建产物
+# 注意：Cargo.lock 需提交（本仓库是应用而非库，锁定依赖以保证可复现构建）
 target/
-Cargo.lock
 
 # Node 依赖
 node_modules/

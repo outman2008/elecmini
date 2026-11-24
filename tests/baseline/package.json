@@ -1,6 +1,7 @@
 {
-  "name": "elecmini-test-app",
-  "version": "0.1.0",
+  "name": "elecmini-fixture-baseline",
+  "version": "1.0.0",
+  "private": true,
   "main": "main.js",
   "dependencies": {
     "electron": "^45.4.1"

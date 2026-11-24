@@ -1,0 +1,32 @@
+# pack —— 打包、签名、更新与灰度
+
+面向分发的工具链：把 ElecMini 运行时 + 目标应用打成 Slim / Full 两种 SKU，
+并提供代码签名、自动更新（含验签与回滚）、灰度分桶与遥测聚合。
+
+## 工具
+
+| 文件 | 作用 |
+|---|---|
+| `build.js` | 打包构建：组装运行时 + 应用 + 更新清单，产出 Slim / Full 包 |
+| `sign.js` | Ed25519 代码签名与验签（含自检） |
+| `update.js` | 自动更新：manifest 校验、验签、原子替换、失败回滚 |
+| `gray.js` | 灰度分桶（按匿名设备 ID 决定是否放量） |
+| `telemetry-report.js` | 遥测聚合：JSONL 样本 → L0 覆盖率分布 + Go/No-Go 判定 |
+| `fetch-webview2.js` | 拉取 WebView2 版本数据 |
+| `watch-webview.js` | 监听 WebView2 版本变化 |
+| `config.json` | 打包配置（组件、格式、目标应用） |
+| `gray-config.json` | 灰度配置模板 |
+| `templates/` | 打包模板 |
+
+## 常用命令
+
+```bash
+node pack/build.js --app examples/minimal
+node pack/sign.js --verify <bundle>
+node pack/telemetry-report.js --dir <telemetryDir> --min-samples 385
+```
+
+## SKU 说明
+
+- **Slim**：不捆绑 WebView2 运行时，体积小，依赖系统已装的 WebView2。
+- **Full**：捆绑 WebView2 Evergreen 引导器，兼容未装运行时的机器。

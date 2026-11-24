@@ -67,28 +67,30 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 前置：Node 22、Rust stable；Linux 需 `libwebkit2gtk-4.1-dev`（macOS / Windows 用系统自带 WebView）。
 
 ```bash
-# 1) 安装
-npm install elecmini
-# 或克隆源码
+# 1) 克隆并构建 Rust host（只需一次）
 git clone https://github.com/outman2008/elecmini.git && cd elecmini
-
-# 2) 构建 Rust host
 cargo build --release -p elecmini-host --bin elecmini-host
 
-# 3) 运行一个目标应用（目录内需有 package.json / main.js）
-node runtime/launcher.js <appDir>
+# 2) 跑最小示例（一个窗口 + 一次 IPC 往返）
+npx elecmini run examples/minimal
+# 或直接：
+node runtime/launcher.js examples/minimal
 
-# 4) 迁移评估（静态扫描）
-node migrate/assess.js --project <appDir> --out migrate/reports/<name>
+# 3) 迁移评估：静态扫描你现有的 Electron 应用
+npx elecmini assess --project <你的应用目录>
 
-# 5) 检查
-bash ci/check.sh            # 全量（含 E2E，Linux 需 xvfb-run）
-bash ci/check.sh --quick    # 快速：跳过编译 / E2E
+# 4) 检查
+npx elecmini check --quick     # 快速：跳过编译 / E2E
+npx elecmini check             # 全量（Linux 需 xvfb-run）
 ```
+
+> CLI 装好后还有 `elecmini run / assess / probe / audit / check` 子命令，`elecmini --help` 查看。
+> 最小示例见 [`examples/minimal/`](./examples/minimal/)。
 
 ## API 支持分级
 
-表面覆盖 ≠ 语义完整。基于 Electron 45.4.1 官方类型定义审计，共 984 个成员：
+表面覆盖 ≠ 语义完整。Electron 45.4.1 官方类型定义共 **984 个成员**（50 个导出）。
+ElecMini 对其中**核心 20 个模块**的成员做了逐项语义分级，共 525 项：
 
 | 分级 | 数量 | 含义 |
 |---|---|---|
@@ -96,15 +98,21 @@ bash ci/check.sh --quick    # 快速：跳过编译 / E2E
 | **mirror** | 327 | 状态镜像 / 轻量封装，可用性高 |
 | **degraded** | 85 | 降级桩：返回类型正确的安全默认值，或平台专属边界 |
 
+> 说明：984 是**全部**官方成员数（含非核心模块），上表 525 是核心集的**已分级**成员数。
+> 核心 20 模块的成员表面覆盖为 100%；未纳入核心集的其余导出成员不保证可用。
+
 分级由 `node migrate/api-surface/audit.js` 实时生成；完整不支持清单见 [`docs/unsupported-apis.md`](./docs/unsupported-apis.md)。迁移前务必运行 `node migrate/assess.js --project <appDir>`。
 
 ## 平台支持
 
 | 平台 | WebView | 编译 | E2E 验证 |
 |---|---|---|---|
-| Windows | WebView2 | ✅ | ✅ 真机全套（含安全加固 22/22、差分契约 42/42） |
+| Windows | WebView2 | ✅ | ✅ 真机全套（安全加固 22/22、差分契约 42/42） |
 | macOS | WKWebView | ✅ | CI 编译 + 单测；运行时需 macOS 机器 |
-| Linux | WebKitGTK | ✅ | ✅ 全量（差分 / E2E） |
+| Linux | WebKitGTK | ✅ | ✅ 全量（差分 42/42、E2E；需 `xvfb-run`） |
+
+> 差分的 42 个用例中有 17 个依赖真实窗口 / 屏幕 / session，**必须在有显示环境**下运行
+> （Linux 用 `xvfb-run`，Windows 为真机桌面）；无显示环境下这些用例不写盘，实际只比对 25 个。
 
 ## 已知边界
 
@@ -118,9 +126,18 @@ bash ci/check.sh --quick    # 快速：跳过编译 / E2E
 
 | 主题 | 文档 |
 |---|---|
+| 最小示例 | [`examples/minimal/`](./examples/minimal/) |
 | 迁移评估手册 | [`migrate/README.md`](./migrate/README.md) |
 | 不支持 API 清单 | [`docs/unsupported-apis.md`](./docs/unsupported-apis.md) |
 | API 表面审计工具 | [`migrate/api-surface/audit.js`](./migrate/api-surface/audit.js) |
+| 运行时（Node sidecar） | [`runtime/README.md`](./runtime/README.md) |
+| 原生宿主（Rust） | [`host/README.md`](./host/README.md) |
+| 差分契约测试 | [`contract/README.md`](./contract/README.md) |
+| 打包 / 签名 / 更新 | [`pack/README.md`](./pack/README.md) |
+| 兼容性基线 | [`compat/README.md`](./compat/README.md) |
+| API 兼容层与扫描器 | [`shim/README.md`](./shim/README.md) |
+| 测试夹具 | [`tests/README.md`](./tests/README.md) |
+| 检查脚本 | [`ci/README.md`](./ci/README.md) |
 | 版本变更记录 | [`CHANGELOG.md`](./CHANGELOG.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
 | 安全策略 | [`SECURITY.md`](./SECURITY.md) |

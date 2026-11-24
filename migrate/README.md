@@ -12,7 +12,7 @@
 | 步骤 | 做什么 | 工具 | 产出 | 状态 |
 |---|---|---|---|---|
 | 1. 静态扫描 | 扫真实应用的 Electron API 调用点，按归属分档 | `migrate/assess.js`（封装 `shim/src/scan-api.js`） | `migrate/reports/<app>/assessment.{json,md}` | ✅ 就绪 |
-| 2. 运行时差分 | 把应用探针在真 Electron 与 ElecMini 各跑一遍，比对 API 行为 | `contract/run.js` | `contract/results/diff-report.json` | ✅ 就绪（42 用例） |
+| 2. 运行时差分 | 把应用探针在真 Electron 与 ElecMini 各跑一遍，比对 API 行为 | `contract/run.js` | `contract/results/diff-report.json` | ✅ 就绪（42 用例，需显示环境） |
 | 3. 打包启动 | 用目标应用打成 Slim/Full SKU，验证独立启动 | `pack/build.js` | `dist/` | ✅ 就绪 |
 | 4. L0 覆盖率 | 采集目标用户系统 WebView 版本分布，回填遥测 | `pack/telemetry-report.js` | L0 覆盖率 + Go/No-Go | 🟡 机制就绪，样本不足（7/385） |
 

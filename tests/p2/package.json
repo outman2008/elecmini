@@ -1,5 +1,6 @@
 {
-  "name": "elecmini-p2-target",
+  "name": "elecmini-fixture-p2",
   "version": "1.0.0",
+  "private": true,
   "main": "main.js"
 }

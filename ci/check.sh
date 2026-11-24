@@ -125,7 +125,7 @@ if [ "$QUICK" -eq 0 ]; then
   fi
 
   if has_xvfb; then
-    # 9) 差分契约（38 用例）
+    # 9) 差分契约（42 用例）
     run "差分契约测试" bash -c 'timeout 60 xvfb-run -a node contract/run.js 2>&1 | tail -3; test ${PIPESTATUS[0]} -eq 0'
     # 10) P1 主流程 E2E
     run "P1 主流程 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js tests/p1 2>&1 | grep -q PING_RESULT'

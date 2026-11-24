@@ -1,6 +1,7 @@
 {
-  "name": "elecmini-p1-target",
+  "name": "elecmini-fixture-p1",
   "version": "1.0.0",
+  "private": true,
   "description": "P1 核心闭环目标应用：覆盖 app/BrowserWindow/webContents/ipcMain/ipcRenderer/contextBridge/dialog/shell/Menu",
   "main": "main.js"
 }

@@ -1,10 +1,14 @@
 {
   "name": "elecmini",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Electron API contract with system WebView rendering (tao + wry + Node sidecar) — drop Chromium, keep require('electron').",
   "license": "MIT",
   "author": "ElecMini contributors",
   "homepage": "https://github.com/outman2008/elecmini#readme",
+  "main": "runtime/electron.js",
+  "bin": {
+    "elecmini": "bin/elecmini.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/outman2008/elecmini.git"
@@ -33,9 +37,10 @@
     "SECURITY.md",
     "LICENSE",
     "Cargo.toml",
+    "bin/",
+    "examples/",
     "runtime/",
     "host/",
-    "launcher/",
     "shim/src/",
     "pack/*.js",
     "pack/config.json",

@@ -50,7 +50,10 @@ function runSide(side) {
   let stderr = '';
   child.stderr.on('data', (d) => { stderr += d.toString(); });
   return new Promise((resolve) => {
-    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 12000);
+    // 保护性超时：正常情况下 probe-app 在窗口加载后 ~1.5s 自行 quit；
+    // 双进程并发冷启动（尤其 Electron 侧）在低配/CI 环境可能超过 12s，
+    // 过短的超时会在 whenReady 的窗口类用例写盘前 SIGKILL，导致用例数偏少。
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 60000);
     child.on('exit', (code) => {
       clearTimeout(timer);
       let data = null;
