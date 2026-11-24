@@ -131,9 +131,18 @@ MIGRATE_OUT=migrate/reports/electron-api-demos/probe/out.json ELECMINI_AUTOTEST=
 xvfb-run -a node contract/run.js
 ```
 
-## 七、诚实边界
+## 七、原诚实边界与后续修复（2026-11-24 补验）
 
-- 本报告只验证了**静态 API 归属 + 抽样 API 运行时可用性 + 差分签名**，未把 electron-api-demos 的完整 UI 全流程搬到 ElecMini（该 demo 的图标/自定义窗口/多窗口交互未逐一像素验证）。
-- `executeJavaScript` 经 RPC 返回值多包了一层（`{ok,value}`），与 Electron 原生返回值语义有差异，深度依赖该返回值的代码需额外适配。
-- 差分契约的 `did-finish-load` 用例存在偶发时序 flaky，建议加 flush 前延迟消除。
-- 目标应用的原始截图/渲染一致性对比未做（需真机 WebView2/WKWebView 采集）。
+初版报告列出两条边界，现已全部修复并纳入 CI 回归（13/13）：
+
+| 原边界 | 修复 |
+|---|---|
+| 只验证静态归属 + 抽样 API + 差分签名，未做完整 UI 全流程 | 新增 `migrate/full-app/` 迁移适配器，把完整应用（15 个 HTML Imports + 14 导航 + 26 渲染脚本）适配后在 ElecMini 实跑；DOM 断言 14 章节 / about 弹窗 / 61522 字节内容 / 点击交互全通过。详见 `REPORT-full-ui.md` |
+| `executeJavaScript` 返回值多包 `{ok,value}` | host 改用 `evaluate_script_with_callback` 回传真实求值结果，shim 解包只返回 value；数字/字符串/对象断言通过（1+2→3 等） |
+
+### 仍存在的边界（诚实保留）
+
+- **一个主进程 demo 模块加载失败**：`app.setAsDefaultProtocolClient` 未实现（协议处理器 demo），属 ❌ 档 API，已在扫描清单中（protocol-handler）。
+- **多窗口像素级验证未做**：create-window / frameless-window / drag 等子窗口交互未逐一截图对比。
+- 差分契约 `did-finish-load` 用例偶发时序 flaky（首轮 1 次 MISSING，重跑消失）。
+- 三平台渲染一致性对比未做（需真机 WebView2/WKWebView 采集；当前仅 WebKitGTK 实跑）。

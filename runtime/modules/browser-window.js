@@ -90,9 +90,16 @@ class WebContentsShim extends EventEmitter {
     });
   }
 
-  /** executeJavaScript（等价 webContents.executeJavaScript） */
+  /**
+   * executeJavaScript（等价 webContents.executeJavaScript）
+   * Electron 语义：返回 Promise<表达式求值结果>。
+   * host 回包为 { ok, value }，此处解包只返回 value，避免多包一层。
+   */
   executeJavaScript(code) {
-    return this._rpc.call('web:executeJavaScript', { winId: this.id, code });
+    return this._rpc.call('web:executeJavaScript', { winId: this.id, code }).then((r) => {
+      if (r && r.ok === false) throw new Error(`[elecmini] executeJavaScript 失败: ${r.error || 'unknown'}`);
+      return r && Object.prototype.hasOwnProperty.call(r, 'value') ? r.value : null;
+    });
   }
 
   openDevTools() { return this._rpc.call('web:openDevTools', { winId: this.id }); }

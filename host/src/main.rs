@@ -704,9 +704,30 @@ fn main() {
                         "web:executeJavaScript" => {
                             let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
                             let code = params.get("code").and_then(Value::as_str).unwrap_or("");
-                            // WebKitGTK 上 evaluate_script 无返回值，executeJavaScript 降级为执行并返回 ok
-                            if let Some(wv) = webviews.get(&win_id) { let _ = wv.evaluate_script(code); }
-                            if !notify { respond(&out, id, json!({ "ok": true, "value": null })); }
+                            // Electron 语义：executeJavaScript 返回表达式求值结果（Promise）。
+                            // 用 evaluate_script_with_callback 拿到序列化后的 JSON 结果；
+                            // 回调是异步的，故 out/id 需 clone 进闭包后异步 respond。
+                            let replied = match webviews.get(&win_id) {
+                                Some(wv) if !notify => {
+                                    let cb_out = out.clone();
+                                    let cb_id = id.clone();
+                                    match wv.evaluate_script_with_callback(code, move |raw: String| {
+                                        let value = serde_json::from_str::<Value>(&raw)
+                                            .unwrap_or_else(|_| Value::String(raw));
+                                        // 闭包为 Fn（非 FnOnce），id 需 clone 后交给 respond
+                                        respond(&cb_out, cb_id.clone(), json!({ "ok": true, "value": value }));
+                                    }) {
+                                        Ok(()) => true, // 回调将异步回包
+                                        Err(e) => {
+                                            respond(&out, id.clone(), json!({ "ok": false, "error": e.to_string() }));
+                                            true
+                                        }
+                                    }
+                                }
+                                Some(wv) => { let _ = wv.evaluate_script(code); true }
+                                None => false,
+                            };
+                            if !replied { respond(&out, id, json!({ "ok": false, "error": "window not found" })); }
                         }
 
                         "shell:openExternal" | "shell:openPath" | "shell:showItem" => {

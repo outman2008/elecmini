@@ -81,10 +81,14 @@ app.whenReady().then(() => {
   win.loadURL('data:text/html,<html><body>migrate-probe</body></html>');
   win.webContents.on('did-finish-load', () => {
     check('wc.did-finish-load_fired', () => true);
-    win.webContents.executeJavaScript('typeof window.electronAPI').then((v) => {
-      check('preload.contextBridge', () => v);
-      setTimeout(() => { flush(); app.quit(); }, 200);
-    }).catch((e) => { check('preload.contextBridge', () => 'error:' + e.message); flush(); app.quit(); });
+    // executeJavaScript 返回值语义（Electron：Promise<表达式值>，不得多包 {ok,value}）
+    Promise.all([
+      win.webContents.executeJavaScript('1 + 2').then(v => check('execJS.number', () => v)),
+      win.webContents.executeJavaScript('"hello-" + "elecmini"').then(v => check('execJS.string', () => v)),
+      win.webContents.executeJavaScript('({ a: 1, b: [2, 3] })').then(v => check('execJS.object', () => v)),
+      win.webContents.executeJavaScript('typeof window.electronAPI').then(v => check('preload.contextBridge', () => v)),
+    ]).then(() => { setTimeout(() => { flush(); app.quit(); }, 200); })
+      .catch((e) => { check('execJS.error', () => 'error:' + e.message); flush(); app.quit(); });
   });
 });
 
