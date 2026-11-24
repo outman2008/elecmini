@@ -57,7 +57,12 @@ if [ -f migrate/api-surface/audit.js ] && [ -f test-app/node_modules/electron/el
       process.exit(1)
     }
     const t=r.tiers||{};
-    console.log('核心契约 '+c.total+'/'+c.total+' 全覆盖（native='+(r.nativeBaseline?Math.max(0,c.total*1-r.nativeBaseline.missingMembers):'?')+' / mirror='+(t.mirror||0)+' / degraded='+(t.degraded||0)+'）');
+    // native 口径与 audit.js 报告一致：核心官方成员总数 - 原生基线缺失数
+    const coreMembers = (r.rows||[]).filter(x=>x.core).reduce((a,x)=>a+x.officialMembers,0);
+    const nativeN = r.nativeBaseline
+      ? Math.max(0, coreMembers - r.nativeBaseline.missingMembers)
+      : '?';
+    console.log('核心契约 '+c.total+'/'+c.total+' 模块全覆盖（native='+nativeN+' / mirror='+(t.mirror||0)+' / degraded='+(t.degraded||0)+'）');
   "
 fi
 

@@ -21,6 +21,7 @@ wry = "0.52"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
+base64 = "0.22"
 
 # S4：Windows WebView2 专属能力（WebResourceRequested / CDP / DevTools）
 [target.'cfg(target_os = "windows")'.dependencies]

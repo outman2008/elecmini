@@ -55,6 +55,9 @@ class Store {
         if (payload && typeof payload.title === 'string') w.title = payload.title;
       } else if (type === 'url') {
         if (payload && typeof payload.url === 'string') w.url = payload.url;
+      } else if (type === 'nativeHandle') {
+        // P6-A：原生窗口句柄镜像（getNativeWindowHandle 同步读）
+        if (payload && typeof payload.handle === 'number') w.nativeHandle = payload.handle;
       } else if (type === 'close') {
         w.closed = true;
         this._emitWin(winId, 'close');

@@ -21,22 +21,44 @@ function record(mod, member, level, reason) {
   (registry[mod] ||= {})[member] = { level, reason };
 }
 
-/** 按名称判定降级原因；返回 null 表示可走状态镜像 */
+/**
+ * 按名称判定降级原因；返回 null 表示可走状态镜像。
+ *
+ * P6 治理原则（见 migrate/REPORT-official-api-baseline.md）：
+ *   - 误分类修正：FullScreen/Kiosk 等 tao 原生通用窗口能力已由 runtime 模块真实实现，
+ *     不再落入降级（真实实现的成员在 fillObject 中会被 `member in target` 跳过）。
+ *   - 平台细分：platform-specific 标注具体平台，便于按发版目标评估。
+ *   - unsupported：架构上不可补的同步 API / Chromium 扩展体系，迁移时须改写调用方。
+ */
 function degradeReason(mod, member) {
-  if (/Sync$/.test(member) || member === 'sendSync' || /Sync$/.test(member)) {
-    return 'sync-api: 同步 API 与异步 RPC 架构冲突';
+  // 同步 API：阻塞渲染线程，与异步 RPC 架构冲突，不可补。
+  if (/Sync$/.test(member) || member === 'sendSync') {
+    return 'unsupported-sync: 同步 API 与异步 RPC 架构冲突，须改为 Promise 调用方';
   }
-  if (/TouchBar|Vibrancy|BackgroundMaterial|AccentColor|ActivationPolicy|AppShim|MSIX|JumpList|LoginItem|UserActivity|SecurityScoped|DesktopName|BadgeCount|dock|Dock|overlayIcon|Thumbnail|Thumbar|progressBar|TabbedWindow|tabbed|Tabbing|MissionControl|Mission|FullScreen|Kiosk|SheetOffset|TouchID|Notarization|WebAuthn|EmojiPanel|inAppPurchase|ShareMenu|shareMenu|孟子/.test(member)) {
-    return 'platform-specific: 平台原生 UI/系统能力';
+  // Chromium 扩展体系：WebKit/WebView2 无对应实现，不可补。
+  if (mod === 'session' && /Extension|extension/.test(member)) {
+    return 'unsupported-ext: Chromium 扩展体系，无 WebView 对应能力';
   }
-  if (mod === 'session' && /WebRequest|webRequest|Proxy|Certificate|certificate|NTLM|SSL|Blob|Download|download|SharedDictionary|SpellCheck|spellCheck|Extension|extension|Bluetooth|USB|DevicePermission|DisplayMedia/.test(member)) {
+  // 平台专属 UI/系统能力（细分平台；NativeWindowHandle/capturePage 已真实实现，不在此列）。
+  if (/TouchBar|Vibrancy|BackgroundMaterial|AccentColor|TouchID|UserActivity|SecurityScoped|Notarization|inAppPurchase|ShareMenu|shareMenu|DesktopName|dock|Dock|BadgeCount|AppShim|ActivationPolicy|EmojiPanel|WebAuthn/.test(member)) {
+    return 'platform-macos: macOS 专属原生 UI/系统能力';
+  }
+  if (/MSIX|JumpList|Thumbnail|Thumbar|progressBar|TabbedWindow|tabbed|Tabbing|Taskbar|AppUserModelId|overlayIcon/.test(member)) {
+    return 'platform-windows: Windows 专属原生 UI/系统能力';
+  }
+  if (/MissionControl|Mission|SheetOffset|LoginItem|FullScreen|Kiosk/.test(member)) {
+    // FullScreen/Kiosk 保留兜底标注：若 runtime 未实现则按平台专属降级；
+    // 已实现的成员在 fillObject 中会被跳过，不会走到这里。
+    return 'platform-specific: 平台原生窗口/系统能力（跨平台或待实现）';
+  }
+  if (mod === 'session' && /WebRequest|webRequest|Proxy|Certificate|certificate|NTLM|SSL|Blob|Download|download|SharedDictionary|Bluetooth|USB|DevicePermission|DisplayMedia|SpellCheck|spellCheck/.test(member)) {
     return 'chromium-net: 依赖 Chromium 网络栈/扩展体系';
   }
-  if (mod === 'protocol' && /Buffer|Stream|Http|File|intercept|Intercept|schemesAsPrivileged|Source|Handle|Unhandle/.test(member)) {
-    return 'chromium-net: 依赖 Chromium 协议栈';
+  if (mod === 'protocol' && /Buffer|Stream|Http|intercept|Intercept|schemesAsPrivileged|Source|Handle|Unhandle/.test(member)) {
+    return 'chromium-net: 依赖 Chromium 协议栈（register* 已接入 host，intercept* 仍降级）';
   }
-  if (/capturePage|NativeWindowHandle|MediaSourceId|Gesture|InputEvent|hookWindowMessage|WindowMessage/.test(member)) {
-    return 'native-render: 依赖原生窗口/渲染句柄';
+  if (/MediaSourceId|Gesture|InputEvent|hookWindowMessage|WindowMessage/.test(member)) {
+    return 'native-render: 依赖 Chromium 原生渲染/消息句柄';
   }
   return null;
 }

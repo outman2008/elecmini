@@ -53,6 +53,8 @@ const scan = JSON.parse(fs.readFileSync(scanJsonPath, 'utf8'));
 const blocking = scan.findings.filter(f =>
   f.status === '❌' || f.status === '❓未列' || String(f.status).startsWith('⚠️')
 );
+// P6-D：架构不可补、须改写调用方的点（同步 API / Chromium 扩展），单列改写建议
+const unsupported = scan.findings.filter(f => f.unsupported === true);
 const degraded = scan.findings.filter(f => String(f.status).startsWith('🟠'));
 const partial = scan.findings.filter(f => String(f.status).startsWith('🟡'));
 const native = scan.findings.filter(f => String(f.status).startsWith('✅'));
@@ -65,6 +67,7 @@ const verdict = blocking.length === 0 ? 'CONDITIONAL_GO' : 'NEEDS_BUSINESS_CONFI
 const reasons = [];
 reasons.push(`收益面（双目标）：包体/冷启动硬门槛由架构保证（Slim 84MB vs 274MB，~345ms）；内存为已知限制 PSS 107%，不否决。`);
 reasons.push(`API 面（Go/No-Go 第 2 条）：❌/⚠️ 调用点 ${blocking.length} 处${blocking.length === 0 ? '，静态否决点为零' : '，需业务方逐项确认替代方案或放弃' }。`);
+reasons.push(`架构不可补面：${unsupported.length} 处（同步 API / Chromium 扩展），已在报告给出 Promise 改写建议，须改造调用方。`);
 reasons.push(`降级面：🟠 ${degraded.length} 处、🟡 ${partial.length} 处、✅ ${native.length} 处，需运行时差分契约验证实际行为。`);
 
 const report = {
@@ -78,10 +81,12 @@ const report = {
     partial: partial.length,
     degraded: degraded.length,
     blocking: blocking.length,
+    unsupported: unsupported.length,
   },
   verdict,
   reasons,
   blockingCallSites: blocking,
+  unsupportedCallSites: unsupported,
   degradedCallSites: degraded,
   byModule: scan.byModule,
   nextSteps: [
@@ -115,6 +120,7 @@ md.push(`| ✅ 原生支持 | ${native.length} |`);
 md.push(`| 🟡 部分/需验证 | ${partial.length} |`);
 md.push(`| 🟠 降级实现 | ${degraded.length} |`);
 md.push(`| ❌/⚠️ 阻断（需业务确认） | ${blocking.length} |`);
+md.push(`| ❌ 架构不可补（须改写） | ${unsupported.length} |`);
 md.push('');
 md.push('## 判定依据');
 md.push('');
@@ -132,6 +138,18 @@ if (blocking.length) {
       : (f.value !== undefined ? `值=${f.value}` : '需业务方确认替代方案或放弃');
     md.push(`| ${f.file} | ${f.line} | ${f.module} | ${symbol} | ${f.status} | ${note} |`);
   });
+  md.push('');
+}
+if (unsupported.length) {
+  md.push('## ❌ 架构不可补调用点（同步 API / Chromium 扩展，须改写调用方）');
+  md.push('');
+  md.push('| 文件 | 行 | 调用 | 改写建议 |');
+  md.push('|---|---|---|---|');
+  for (const f of unsupported) {
+    md.push(`| ${f.file} | ${f.line} | ${f.module}.${f.method} | ${f.rewrite || '须改写调用方'} |`);
+  }
+  md.push('');
+  md.push('> 这些 API 依赖阻塞式同步 RPC 或 Chromium 专有扩展体系，shim 层无法忠实实现。迁移时须按上表改为 Promise 流程或移除依赖。');
   md.push('');
 }
 md.push('## 下一步');

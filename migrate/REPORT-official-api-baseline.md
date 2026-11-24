@@ -104,11 +104,24 @@ ElecMini 是 tao+wry + Node sidecar，没有 Electron 二进制与内部模块�
 
 | 级别 | 成员数 | 占比 | 实现 |
 |---|---:|---:|---|
-| 🟢 native 原生 | 96 | 18.8% | 补齐前即存在的真实 host 能力 |
-| 🟡 mirror 状态镜像 | 331 | 64.9% | `set*` 写入本地状态、`get*/is*` 读回，有真实状态效果但非原生（如 `app.name`、`setBounds`/`getBounds`） |
-| 🔴 degraded 降级桩 | 98 | 19.2% | 返回安全默认值并登记原因：platform-specific(41) / chromium-net(47) / native-render(7) / sync-api(3) |
+| 🟢 native 原生 | 114 | 22.4% | 补齐前即存在的真实 host 能力（P6 后新增全屏/窗口句柄/capturePage 等） |
+| 🟡 mirror 状态镜像 | 327 | 64.1% | `set*` 写入本地状态、`get*/is*` 读回，有真实状态效果但非原生（如 `app.name`、`setBounds`/`getBounds`） |
+| 🔴 degraded 降级桩 | 84 | 16.5% | 返回安全默认值并登记原因（P6 细分平台）：platform-macos(20) / chromium-net(38) / platform-windows(8) / native-render(5) / platform-specific(5) / unsupported-ext(5) / unsupported-sync(3) |
 
-**表面覆盖率 100%（20/20 模块、510/510 核心成员名齐全）**，但真实原生能力仍只有 18.8%。补齐的价值是**消除迁移崩溃点**，不是假装功能完整。
+**表面覆盖率 100%（20/20 模块、510/510 核心成员名齐全）**，真实原生能力从 18.8% 提升到 22.4%。补齐的价值是**消除迁移崩溃点**，不是假装功能完整。
+
+### P6：降级 API 补齐与治理（本次）
+
+针对上一版 98 个降级桩逐类评估"能否补齐"，按收益/成本分四步推进，结果见 `CHANGELOG-api-governance.md`：
+
+| 步骤 | 动作 | 结果 |
+|---|---|---|
+| 1 修误分类 | `FullScreen`/`Kiosk` 系列本是 tao 通用原生能力，被正则误判为平台专属 | 在 `browser-window.js` 真实实现全屏系列 + 属性镜像，从 degraded 移出 |
+| 2 接已有能力 | host 已有/易得的底层能力接到 JS 层 | `getNativeWindowHandle`（tao 原生句柄回推）、`capturePage`（系统截图）、`protocol.registerBufferProtocol/registerStreamProtocol`、`session` 拼写检查词表、真 `setProxy/resolveProxy` 落地 |
+| 3 平台治理 | `platform-specific` 细分为 `platform-macos`/`platform-windows`/`platform-specific`，标注适用平台 | 41 个笼统降级拆为 20 macOS + 8 Windows + 5 跨平台 + 其余，按发版目标可评估 |
+| 4 不支持清单 | 同步 API / Chromium 扩展明确列为不可补 | `unsupported-sync`(3) / `unsupported-ext`(5) 单列；迁移工具 `assess.js` 对调用点给出 Promise 改写建议 |
+
+净效果：degraded 从 **98 → 84**，native 从 **96 → 114**（原生覆盖率 18.8% → 22.4%）。降级桩从"安全默认值"细化出**可真实实现**与**架构不可补**两条路径，不再一概而论。
 
 ### 关键修复与回归防护
 
@@ -119,5 +132,5 @@ ElecMini 是 tao+wry + Node sidecar，没有 Electron 二进制与内部模块�
 ### 结论
 
 - **表面 100% 已达成并可回归防护**：官方声明的核心成员在 shim 上全部存在，迁移应用不会因 API 缺失崩溃。
-- **真实兼容仍分层可见**：native 18.8% / mirror 64.9% / degraded 19.2%，由审计工具自动拆分，杜绝刷指标。
+- **真实兼容仍分层可见**：native 22.4% / mirror 64.1% / degraded 16.5%，由审计工具自动拆分，杜绝刷指标。P6 后降级桩细分到平台，同步 API/扩展单列为不可补并给出迁移改写建议。
 - **升级 electron 版本时**：重跑 `node migrate/api-surface/gen-contract.js` 重新生成官方契约数据，再跑 `audit.js`，新增成员会自动进入补齐层并分级。

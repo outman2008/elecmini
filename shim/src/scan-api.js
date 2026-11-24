@@ -106,16 +106,30 @@ function analyzeFile(file) {
     contextBridge: new Set(['exposeInMainWorld']),
     session: new Set(['defaultSession']),
   };
+  // P6-D：架构上不可补的调用点 + Promise 改写建议（同步 API / Chromium 扩展）
+  const UNSUPPORTED_REWRITE = {
+    sendSync: 'ipcRenderer.sendSync → 改为 ipcRenderer.invoke + await（主进程 handle 返回 Promise）',
+    showMessageBoxSync: 'dialog.showMessageBoxSync → 改为 await dialog.showMessageBox()',
+    showSaveDialogSync: 'dialog.showSaveDialogSync → 改为 await dialog.showSaveDialog()',
+    showOpenDialogSync: 'dialog.showOpenDialogSync → 改为 await dialog.showOpenDialog()',
+    showCertificateTrustDialog: 'dialog.showCertificateTrustDialog → 无 WebView 对应能力，须用自有 UI 替代',
+    loadExtension: 'session.loadExtension → Chromium 扩展体系不受支持，须移除扩展依赖',
+    getAllExtensions: 'session.getAllExtensions → Chromium 扩展体系不受支持',
+    removeExtension: 'session.removeExtension → Chromium 扩展体系不受支持',
+  };
   const recordMethod = (moduleName, method, line, via) => {
     const isKnown = MODULE_METHODS[moduleName]?.has(method);
     const status = STATUS[moduleName] ?? '❓未列';
+    const rewrite = UNSUPPORTED_REWRITE[method];
     findings.push({
       module: moduleName,
       method,
-      status,
+      status: rewrite ? '❌不支持' : status,
       line,
       kind: 'call',
       via,
+      unsupported: rewrite ? true : undefined,
+      rewrite,
       note: isKnown ? undefined : `方法 ${method} 未在归属表中登记，按宿主模块 ${moduleName} 判定`,
     });
   };

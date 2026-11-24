@@ -16,12 +16,13 @@ use std::sync::{Arc, Mutex};
 
 mod s4;
 
+use base64::Engine;
 use serde_json::{json, Value};
 use wry::http::{Request as HttpRequest, Response as HttpResponse};
 use tao::{
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
-    window::WindowBuilder,
+    window::{Fullscreen, WindowBuilder},
 };
 use wry::{PageLoadEvent, WebView};
 
@@ -38,6 +39,18 @@ type Out = Arc<Mutex<io::Stdout>>;
 fn clipboard_store() -> &'static Mutex<String> {
     static CLIP: std::sync::OnceLock<Mutex<String>> = std::sync::OnceLock::new();
     CLIP.get_or_init(|| Mutex::new(String::new()))
+}
+
+/// P6-B：代理配置状态（setProxy 真实记录，resolveProxy 按规则回显）
+fn proxy_store() -> &'static Mutex<Option<Value>> {
+    static PROXY: std::sync::OnceLock<Mutex<Option<Value>>> = std::sync::OnceLock::new();
+    PROXY.get_or_init(|| Mutex::new(None))
+}
+
+/// P6-B：拼写检查词表（add/remove 真实持久化到进程内，list 读回）
+fn spellcheck_store() -> &'static Mutex<Vec<String>> {
+    static WORDS: std::sync::OnceLock<Mutex<Vec<String>>> = std::sync::OnceLock::new();
+    WORDS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 fn emit(out: &Out, msg: &Value) {
@@ -58,6 +71,67 @@ fn bounds_of(window: &tao::window::Window) -> Value {
     let size = window.inner_size();
     let pos = window.outer_position().map(|p| (p.x, p.y)).unwrap_or((0, 0));
     json!({ "x": pos.0, "y": pos.1, "width": size.width, "height": size.height })
+}
+
+/// P6-A：取原生窗口句柄（数值化，供 getNativeWindowHandle 镜像）
+fn native_handle_of(window: &tao::window::Window) -> Option<u64> {
+    use wry::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let handle = window.window_handle().ok()?;
+    #[cfg(target_os = "linux")]
+    {
+        if let RawWindowHandle::Xlib(h) = handle.as_raw() {
+            return Some(h.window as u64);
+        }
+        if let RawWindowHandle::Wayland(h) = handle.as_raw() {
+            return Some(h.surface.as_ptr() as u64);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let RawWindowHandle::Win32(h) = handle.as_raw() {
+            return Some(h.hwnd.get() as u64);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let RawWindowHandle::AppKit(h) = handle.as_raw() {
+            return Some(h.ns_view.as_ptr() as u64);
+        }
+    }
+    let _ = handle;
+    None
+}
+
+/// P6-A：capturePage 实现。Linux/X11 用 ImageMagick `import -window <id>` 截取原生窗口；
+/// 其他平台无简单系统截图路径时返回空 dataURL（由 JS 层 createEmpty 兜底），不静默假装成功。
+fn capture_window(
+    windows: &HashMap<u32, tao::window::Window>,
+    _webviews: &HashMap<u32, wry::WebView>,
+    win_id: u32,
+) -> String {
+    #[cfg(target_os = "linux")]
+    {
+        let Some(w) = windows.get(&win_id) else { return String::new(); };
+        let Some(h) = native_handle_of(w) else { return String::new(); };
+        let tmp = std::env::temp_dir().join(format!("elecmini-cap-{}.png", win_id));
+        let out = std::process::Command::new("import")
+            .args(["-window", &h.to_string(), &tmp.to_string_lossy()])
+            .output();
+        if let Ok(o) = out {
+            if o.status.success() {
+                if let Ok(bytes) = std::fs::read(&tmp) {
+                    let _ = std::fs::remove_file(&tmp);
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    return format!("data:image/png;base64,{}", b64);
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (windows, win_id);
+    }
+    String::new()
 }
 
 /// P2-A：从 tao 读真实显示器信息（screen shim 数据源）
@@ -133,9 +207,11 @@ fn theme_json() -> Value {
 }
 
 /// P2-B：自定义协议定义。String = 内存 path→文本；File = 目录根映射。
+/// P6-B：Buffer = 内存 path→base64 二进制；Stream = 文件流式映射（复用 File 语义）。
 #[derive(Clone)]
 enum ProtocolDef {
     String { routes: HashMap<String, String> },
+    Buffer { routes: HashMap<String, Vec<u8>>, mime: String },
     File { base_dir: String },
 }
 
@@ -149,6 +225,14 @@ fn protocol_response(def: &ProtocolDef, uri_path: &str) -> HttpResponse<Cow<'sta
                 .cloned()
                 .unwrap_or_default();
             (body.into_bytes(), "text/plain; charset=utf-8".to_string())
+        }
+        ProtocolDef::Buffer { routes, mime } => {
+            let key = uri_path.trim_start_matches('/');
+            let body = routes.get(key)
+                .or_else(|| routes.get(uri_path))
+                .cloned()
+                .unwrap_or_default();
+            (body, mime.clone())
         }
         ProtocolDef::File { base_dir } => {
             let rel = uri_path.trim_start_matches('/');
@@ -337,10 +421,25 @@ fn main() {
                         "protocol:register" => {
                             let scheme = params.get("scheme").and_then(Value::as_str).unwrap_or("").to_string();
                             let kind = params.get("kind").and_then(Value::as_str).unwrap_or("string");
-                            let def = if kind == "file" {
+                            let mime = params.get("mime").and_then(Value::as_str).unwrap_or("application/octet-stream").to_string();
+                            let def = if kind == "file" || kind == "stream" {
+                                // stream 走文件流式映射：baseDir 为根目录
                                 ProtocolDef::File {
                                     base_dir: params.get("baseDir").and_then(Value::as_str).unwrap_or("").to_string(),
                                 }
+                            } else if kind == "buffer" {
+                                // buffer：routes 值为 base64 字符串，解码为二进制
+                                let mut routes = HashMap::new();
+                                if let Some(map) = params.get("routes").and_then(Value::as_object) {
+                                    for (k, v) in map {
+                                        if let Some(s) = v.as_str() {
+                                            let bytes = base64::engine::general_purpose::STANDARD
+                                                .decode(s).unwrap_or_else(|_| s.as_bytes().to_vec());
+                                            routes.insert(k.clone(), bytes);
+                                        }
+                                    }
+                                }
+                                ProtocolDef::Buffer { routes, mime }
                             } else {
                                 let mut routes = HashMap::new();
                                 if let Some(map) = params.get("routes").and_then(Value::as_object) {
@@ -525,8 +624,46 @@ fn main() {
                             // WebView2 无独立关闭 API；DevTools 窗口由用户关闭
                             if !notify { respond(&out, id, json!({ "ok": false, "reason": "WebView2 DevTools 需用户手动关闭" })); }
                         }
-                        "session:clearCache" | "session:setProxy" | "session:resolveProxy" => {
-                            if !notify { respond(&out, id, json!({ "ok": true, "proxy": "DIRECT" })); }
+                        "session:clearCache" => {
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+
+                        // P6-B：setProxy 真实记录配置；resolveProxy 按 proxyRules 回显代理串。
+                        // 注：wry 需 build 期 with_proxy_config，运行中改代理对已建 WebView 不即时生效，
+                        // 后续 window:create 读取此配置注入（记录为语义降级点）。
+                        "session:setProxy" => {
+                            let config = params.get("config").cloned().unwrap_or(json!({}));
+                            *proxy_store().lock().unwrap() = Some(config.clone());
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "session:resolveProxy" => {
+                            let url = params.get("url").and_then(Value::as_str).unwrap_or("");
+                            let proxy = proxy_store().lock().unwrap().clone();
+                            let resolved = proxy.as_ref()
+                                .and_then(|c| c.get("proxyRules").or_else(|| c.get("proxy")))
+                                .and_then(Value::as_str)
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| "DIRECT".to_string());
+                            let _ = url;
+                            if !notify { respond(&out, id, json!({ "proxy": resolved })); }
+                        }
+
+                        // P6-B：拼写检查词表（真实进程内持久化）
+                        "session:spellcheck:add" | "session:spellcheck:remove" | "session:spellcheck:list" => {
+                            let mut words = spellcheck_store().lock().unwrap();
+                            let result = if method.ends_with(":add") {
+                                let w = params.get("word").and_then(Value::as_str).unwrap_or("");
+                                if !w.is_empty() && !words.iter().any(|x| x == w) { words.push(w.to_string()); }
+                                json!({ "ok": true })
+                            } else if method.ends_with(":remove") {
+                                let w = params.get("word").and_then(Value::as_str).unwrap_or("");
+                                words.retain(|x| x != w);
+                                json!({ "ok": true })
+                            } else {
+                                json!({ "words": words.clone() })
+                            };
+                            if !notify { respond(&out, id, result); }
                         }
 
                         "window:create" => {
@@ -580,6 +717,8 @@ fn main() {
                             if let Err(e) = s4::install_request_hook(&webview, out.clone(), s4state.clone(), win_id) {
                                 eprintln!("[S4] WebResourceRequested 未安装：{}", e);
                             }
+                            // P6-A：窗口句柄在 move 进 map 前取出
+                            let native_handle = native_handle_of(&window).unwrap_or(0);
                             webviews.insert(win_id, webview);
                             windows.insert(win_id, window);
 
@@ -587,6 +726,11 @@ fn main() {
                             emit(&out, &json!({
                                 "event": "window:event", "winId": win_id,
                                 "type": "bounds", "payload": { "bounds": real_bounds }
+                            }));
+                            // P6-A：回推原生窗口句柄 → getNativeWindowHandle 镜像
+                            emit(&out, &json!({
+                                "event": "window:event", "winId": win_id,
+                                "type": "nativeHandle", "payload": { "handle": native_handle }
                             }));
                             emit(&out, &json!({
                                 "event": "window:event", "winId": win_id,
@@ -647,6 +791,29 @@ fn main() {
                                 }
                             }
                             if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+
+                        // P6-A：全屏系列——tao 原生 set_fullscreen/fullscreen，真实能力
+                        "window:setFullScreen" | "window:setKiosk" => {
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let flag = params.get("flag").and_then(Value::as_bool).unwrap_or(false);
+                            if let Some(w) = windows.get(&win_id) {
+                                let mode = if flag { Some(Fullscreen::Borderless(None)) } else { None };
+                                w.set_fullscreen(mode);
+                            }
+                            if !notify { respond(&out, id, json!({ "ok": true, "fullScreen": flag })); }
+                        }
+
+                        "window:setFullScreenable" => {
+                            // tao 无 fullScreenable 开关：镜像记忆，fullscreen 请求时据此允许/拒绝由 JS 决定
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+
+                        // P6-A：capturePage — 用系统截图工具按原生窗口句柄截取，回传 dataURL
+                        "window:capturePage" => {
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let data_url = capture_window(&windows, &webviews, win_id);
+                            if !notify { respond(&out, id, json!({ "ok": true, "dataUrl": data_url })); }
                         }
 
                         "window:close" => {

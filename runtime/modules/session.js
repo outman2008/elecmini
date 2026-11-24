@@ -39,10 +39,27 @@ class Session {
   constructor() {
     this.webRequest = makeWebRequest();
     this.protocol = require('./protocol').protocol;
+    // P6-B：拼写检查本地状态（host 侧进程内词表镜像）
+    this._spellEnabled = true;
+    this._spellLanguages = ['en-US'];
   }
   clearCache() { return ctx.get().rpc.call('session:clearCache', {}); }
   setProxy(config) { return ctx.get().rpc.call('session:setProxy', { config }); }
   resolveProxy(url) { return ctx.get().rpc.call('session:resolveProxy', { url }).then((r) => r?.proxy); }
+  forceReloadProxyConfig() { return ctx.get().rpc.call('session:setProxy', { config: {} }); }
+
+  // P6-B：拼写检查（真实词表持久化到 host，非降级桩）
+  isSpellCheckerEnabled() { return this._spellEnabled; }
+  setSpellCheckerEnabled(flag) { this._spellEnabled = !!flag; return Promise.resolve(); }
+  getSpellCheckerLanguages() { return this._spellLanguages; }
+  setSpellCheckerLanguages(langs) { this._spellLanguages = Array.isArray(langs) ? langs : []; return Promise.resolve(); }
+  get availableSpellCheckerLanguages() { return this._spellLanguages; }
+  set availableSpellCheckerLanguages(v) { this._spellLanguages = Array.isArray(v) ? v : []; }
+  get spellCheckerEnabled() { return this._spellEnabled; }
+  set spellCheckerEnabled(v) { this._spellEnabled = !!v; }
+  addWordToSpellCheckerDictionary(word) { return ctx.get().rpc.call('session:spellcheck:add', { word }); }
+  removeWordFromSpellCheckerDictionary(word) { return ctx.get().rpc.call('session:spellcheck:remove', { word }); }
+  listWordsInSpellCheckerDictionary() { return ctx.get().rpc.call('session:spellcheck:list', {}).then((r) => r?.words || []); }
 }
 
 const session = {

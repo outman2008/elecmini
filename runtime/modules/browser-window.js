@@ -104,6 +104,37 @@ class WebContentsShim extends EventEmitter {
 
   openDevTools() { return this._rpc.call('web:openDevTools', { winId: this.id }); }
   closeDevTools() { return this._rpc.call('web:closeDevTools', { winId: this.id }); }
+
+  /**
+   * P6-A：capturePage — Electron 语义 Promise<NativeImage>。
+   * host 用平台截图工具（Linux import / Windows CDP）截取窗口，回传 dataURL。
+   * 真实实现，不再降级为 null。
+   */
+  capturePage() {
+    return this._rpc.call('window:capturePage', { winId: this.id }).then((r) => {
+      const url = r && (r.dataUrl || r.data || r.url);
+      const ni = require('../electron').nativeImage;
+      return url ? ni.createFromDataURL(url) : ni.createEmpty();
+    });
+  }
+}
+
+/** P6-A：把窗口能力属性镜像到 prototype，供契约层识别为原生实现（非补齐桩） */
+function defineWindowProps(cls) {
+  const p = cls.prototype;
+  const mirror = (name, method) => {
+    if (!(name in p)) {
+      Object.defineProperty(p, name, {
+        configurable: true, enumerable: true,
+        get() { return this[method](); },
+        set(v) { this[method.replace(/^is/, 'set')](v); },
+      });
+    }
+  };
+  mirror('fullScreen', 'isFullScreen');
+  mirror('fullScreenable', 'isFullScreenable');
+  mirror('simpleFullScreen', 'isSimpleFullScreen');
+  mirror('kiosk', 'isKiosk');
 }
 
 class BrowserWindow extends EventEmitter {
@@ -148,6 +179,11 @@ class BrowserWindow extends EventEmitter {
     }
 
     this._preloadPath = wp.preload || null;
+    // P6-A：全屏状态镜像（Electron 属性 fullScreen/fullScreenable/simpleFullScreen/kiosk）
+    this._fullScreen = !!opts.fullScreen;
+    this._fullScreenable = opts.fullScreenable !== false;
+    this._simpleFullScreen = !!opts.simpleFullScreen;
+    this._kiosk = !!opts.kiosk;
   }
 
   // ---- 同步 API（读状态镜像） ----
@@ -158,6 +194,36 @@ class BrowserWindow extends EventEmitter {
   isClosed() { const w = this._store.getWindow(this._winId); return !w || w.closed; }
   isDestroyed() { return this.isClosed(); } // Electron 标准方法名
   isFocused() { return !!this._focused; }
+
+  // ---- P6-A：全屏系列（tao 原生 set_fullscreen，真实 RPC） ----
+  isFullScreen() { return this._fullScreen; }
+  setFullScreen(flag) {
+    this._fullScreen = !!flag;
+    return this._rpc.call('window:setFullScreen', { winId: this._winId, flag: !!flag });
+  }
+  isFullScreenable() { return this._fullScreenable; }
+  setFullScreenable(flag) {
+    this._fullScreenable = !!flag;
+    return this._rpc.call('window:setFullScreenable', { winId: this._winId, flag: !!flag });
+  }
+  isSimpleFullScreen() { return this._simpleFullScreen; }
+  setSimpleFullScreen(flag) {
+    this._simpleFullScreen = !!flag;
+    // tao 无独立 simple-fullscreen 语义，映射为全屏（记录为语义降级）
+    return this._rpc.call('window:setFullScreen', { winId: this._winId, flag: !!flag });
+  }
+  isKiosk() { return this._kiosk; }
+  setKiosk(flag) {
+    this._kiosk = !!flag;
+    return this._rpc.call('window:setKiosk', { winId: this._winId, flag: !!flag });
+  }
+  /** P6-A：原生窗口句柄 — host 创建后回推真实值，同步读 store 镜像 */
+  getNativeWindowHandle() {
+    const h = this._store.getWindow(this._winId)?.nativeHandle;
+    return typeof h === 'number' ? h : null;
+  }
+  /** P6-A：capturePage 别名 — Electron 契约列于 BrowserWindow，委派给 webContents */
+  capturePage() { return this.webContents.capturePage(); }
 
   // ---- 异步命令 ----
   loadURL(url) { return this._rpc.call('window:loadUrl', { winId: this._winId, url }); }
@@ -187,5 +253,8 @@ class BrowserWindow extends EventEmitter {
 
 // 静态工厂（Electron 里 BrowserWindow.getAllWindows 等）
 BrowserWindow.getAllWindows = () => Array.from(ctx.get().store.windows.keys());
+
+// P6-A：定义窗口属性镜像（fullScreen 等），使契约层识别为原生实现
+defineWindowProps(BrowserWindow);
 
 module.exports = { BrowserWindow, WebContentsShim };

@@ -26,6 +26,22 @@ const protocol = {
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'file', baseDir });
   },
 
+  /**
+   * P6-B：注册 Buffer 协议。Electron 签名为 handler(req, cb) → cb({ data, mimeType })。
+   * 跨进程下回调无法即时下传，采用预置路由表：handler.routes = { path: base64String }。
+   * 真实下发到 host 的 ProtocolDef::Buffer，返回二进制（非降级桩）。
+   */
+  registerBufferProtocol(scheme, handler, mimeType = 'application/octet-stream') {
+    const routes = {};
+    if (handler && typeof handler.routes === 'object') Object.assign(routes, handler.routes);
+    return ctx.get().rpc.call('protocol:register', { scheme, kind: 'buffer', routes, mime: mimeType });
+  },
+
+  /** P6-B：Stream 协议复用 File 流式映射（baseDir 为根目录） */
+  registerStreamProtocol(scheme, baseDir) {
+    return ctx.get().rpc.call('protocol:register', { scheme, kind: 'stream', baseDir });
+  },
+
   unregisterProtocol(scheme) {
     // host 以空路由覆盖实现注销（保留 scheme 槽位，wry build 后不可动态移除）
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'string', routes: {} });
@@ -34,6 +50,13 @@ const protocol = {
   isProtocolRegistered(scheme) {
     return !!ctx.get()._registeredProtocols?.[scheme];
   },
+
+  /** P6-B：host 已注册的自定义协议（含 register 时登记的槽位） */
+  isProtocolHandled(scheme) {
+    return !!ctx.get()._registeredProtocols?.[scheme];
+  },
+  /** P6-B：intercept* 未接入 host，返回 false（诚实反映未拦截，非安全默认 null） */
+  isProtocolIntercepted(_scheme) { return false; },
 
   /** 内置：app:// 承载目标应用静态资源 */
   registerApp(baseDir) {
