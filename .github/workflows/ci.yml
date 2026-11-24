@@ -31,8 +31,8 @@ jobs:
       - name: 安装根依赖（lint 工具）
         run: npm install --no-audit --no-fund
 
-      - name: 安装 test-app 依赖（Electron 类型基线 + 差分契约二进制）
-        run: npm --prefix test-app ci --no-audit --no-fund
+      - name: 安装 tests/baseline 依赖（Electron 类型基线 + 差分契约二进制）
+        run: npm --prefix tests/baseline ci --no-audit --no-fund
 
       - name: 设置 Rust
         uses: dtolnay/rust-toolchain@stable
@@ -73,8 +73,8 @@ jobs:
       - name: 安装根依赖
         run: npm install --no-audit --no-fund
 
-      - name: 安装 test-app 依赖（electron.d.ts + 差分契约 electron.exe）
-        run: npm --prefix test-app ci --no-audit --no-fund
+      - name: 安装 tests/baseline 依赖（electron.d.ts + 差分契约 electron.exe）
+        run: npm --prefix tests/baseline ci --no-audit --no-fund
 
       - name: 设置 Rust
         uses: dtolnay/rust-toolchain@stable

@@ -81,7 +81,7 @@ fi
 
 # 7.5) 官方 API 表面基线（Electron 官方 electron.d.ts vs 实际导出）
 # 注：默认只报告不判定（覆盖率低是已知阶段性事实），核心模块全导出作为硬门槛
-if [ -f migrate/api-surface/audit.js ] && [ -f test-app/node_modules/electron/electron.d.ts ]; then
+if [ -f migrate/api-surface/audit.js ] && [ -f tests/baseline/node_modules/electron/electron.d.ts ]; then
   run "契约补齐层单测" node migrate/api-surface/contract-fill.test.js
   run "同步 API 降级语义(caprine 场景)" node -e "
     const noop=()=>{};const p=(b={})=>new Proxy(b,{get:(t,k)=>k in t?t[k]:noop});
@@ -128,20 +128,20 @@ if [ "$QUICK" -eq 0 ]; then
     # 9) 差分契约（38 用例）
     run "差分契约测试" bash -c 'timeout 60 xvfb-run -a node contract/run.js 2>&1 | tail -3; test ${PIPESTATUS[0]} -eq 0'
     # 10) P1 主流程 E2E
-    run "P1 主流程 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js test-app-p1 2>&1 | grep -q PING_RESULT'
+    run "P1 主流程 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js tests/p1 2>&1 | grep -q PING_RESULT'
     # 11) P2 全模块 E2E
-    run "P2 全模块 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js test-app-p2 2>&1 | grep -q safeStorage'
+    run "P2 全模块 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js tests/p2 2>&1 | grep -q safeStorage'
   elif [ "$IS_WINDOWS" -eq 1 ]; then
     # Windows 原生桌面 + WebView2：不需要 xvfb，真机跑全部 E2E
     run "门禁真机探测(L0)" node -e 'const p=require("./runtime/gate").probe(); if(p.level!=="L0"){console.error(p);process.exit(1)} console.log(p)'
-    # 差分契约依赖 test-app/node_modules 的 electron.exe；CI 已安装，本地缺失则跳过并明确提示
-    if [ -x test-app/node_modules/electron/dist/electron.exe ]; then
+    # 差分契约依赖 tests/baseline/node_modules 的 electron.exe；CI 已安装，本地缺失则跳过并明确提示
+    if [ -x tests/baseline/node_modules/electron/dist/electron.exe ]; then
       run "差分契约测试(Windows)" bash -c 'ELECTRON_RUN_AS_NODE= timeout 120 node contract/run.js 2>&1 | tail -3; test ${PIPESTATUS[0]} -eq 0'
     else
-      echo "[SKIP] 差分契约：缺 test-app/node_modules（先 npm --prefix test-app ci）"
+      echo "[SKIP] 差分契约：缺 tests/baseline/node_modules（先 npm --prefix tests/baseline ci）"
     fi
-    run "P1 主流程 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 timeout 45 node runtime/launcher.js test-app-p1 2>&1 | grep -q PING_RESULT'
-    run "P2 全模块 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 ELECMINI_TEST_FILE=/tmp/p2-file.txt timeout 45 node runtime/launcher.js test-app-p2 2>&1 | grep -q safeStorage'
+    run "P1 主流程 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 timeout 45 node runtime/launcher.js tests/p1 2>&1 | grep -q PING_RESULT'
+    run "P2 全模块 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 ELECMINI_TEST_FILE=/tmp/p2-file.txt timeout 45 node runtime/launcher.js tests/p2 2>&1 | grep -q safeStorage'
     run "S4 WebView2 能力(请求拦截/CDP/DevTools)" node contract/s4-check.js
     run "Windows 安全加固+平台降级" node contract/win-check.js
   else

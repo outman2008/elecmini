@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * S4 WebView2 专属能力自动验收（Windows 真机）。
- * 启动 test-app-s4，断言请求头注入 / CDP 命令 / CDP 事件 / DevTools 能力。
+ * 启动 tests/s4，断言请求头注入 / CDP 命令 / CDP 事件 / DevTools 能力。
  */
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -15,7 +15,7 @@ const env = {
   ELECMINI_S4_DEVTOOLS: '0',
 };
 
-const r = spawnSync(process.execPath, [launcher, 'test-app-s4'], {
+const r = spawnSync(process.execPath, [launcher, 'tests/s4'], {
   cwd: ROOT, env, encoding: 'utf8', timeout: 30000,
 });
 const output = `${r.stdout || ''}\n${r.stderr || ''}`;

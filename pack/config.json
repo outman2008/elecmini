@@ -18,7 +18,7 @@
     "host": "target/release/elecmini-host",
     "runtime": "runtime",
     "shim": "shim/src",
-    "app": "test-app-p2"
+    "app": "tests/p2"
   },
   "targets": {
     "win32-x64": { "hostSuffix": ".exe", "formats": ["dir", "nsis"] },

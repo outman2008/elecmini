@@ -18,7 +18,7 @@ const { spawn, spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 const PROBE = path.join(__dirname, 'probe-app');
 const RESULTS = path.join(__dirname, 'results');
-const ELECTRON_BIN = path.join(ROOT, 'test-app/node_modules/electron/dist/electron' + (process.platform === 'win32' ? '.exe' : ''));
+const ELECTRON_BIN = path.join(ROOT, 'tests/baseline/node_modules/electron/dist/electron' + (process.platform === 'win32' ? '.exe' : ''));
 const LAUNCHER = path.join(ROOT, 'runtime/launcher.js');
 
 function parseArgs(argv) {

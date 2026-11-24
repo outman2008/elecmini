@@ -2,7 +2,7 @@
 /**
  * Windows 专项自动验收（v1.3 安全加固 + 平台降级行为）。
  *
- * 启动 test-app-win 两次：
+ * 启动 tests/win 两次：
  *   - 非严格模式：异源 B 导航放行 → 但 IPC 被丢弃（[SECURITY] dropped IPC）
  *   - 严格模式（ELECMINI_STRICT_NAV=1）：异源 B 导航被阻断
  * 两次都验证：本地受信 origin IPC 正常、锚定 origin IPC 正常、剪贴板 HTML / safeStorage / capturePage 降级。
@@ -20,7 +20,7 @@ function run(strict) {
     ELECMINI_STRICT_NAV: strict ? '1' : '0',
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const r = spawnSync(process.execPath, [launcher, 'test-app-win'], {
+  const r = spawnSync(process.execPath, [launcher, 'tests/win'], {
     cwd: ROOT, env, encoding: 'utf8', timeout: 45000,
   });
   return { strict, status: r.status, output: `${r.stdout || ''}\n${r.stderr || ''}` };

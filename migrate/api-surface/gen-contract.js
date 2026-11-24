@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '../..');
-const DTS = path.join(ROOT, 'test-app/node_modules/electron/electron.d.ts');
+const DTS = path.join(ROOT, 'tests/baseline/node_modules/electron/electron.d.ts');
 const OUT = path.join(ROOT, 'runtime/contract-data.js');
 
 const INHERITED = new Set([

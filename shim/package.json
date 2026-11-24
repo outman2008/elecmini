@@ -28,7 +28,7 @@
     "src/"
   ],
   "scripts": {
-    "scan": "node src/scan-api.js --project ../test-app",
+    "scan": "node src/scan-api.js --project ../tests/baseline",
     "test:ipc": "node src/ipc-types.test.js"
   },
   "devDependencies": {

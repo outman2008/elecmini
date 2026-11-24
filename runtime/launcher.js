@@ -35,7 +35,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--debug') { args.debug = true; }
     else rest.push(argv[i]);
   }
-  args.appDir = rest[0] || path.resolve(__dirname, '../test-app');
+  args.appDir = rest[0] || path.resolve(__dirname, '../tests/baseline');
   return args;
 }
 

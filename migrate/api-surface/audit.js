@@ -2,7 +2,7 @@
 /**
  * ElecMini — 基于 Electron 官方类型定义的 API 表面一致性检测
  *
- * 权威基线：test-app/node_modules/electron/electron.d.ts 的 CrossProcessExports
+ * 权威基线：tests/baseline/node_modules/electron/electron.d.ts 的 CrossProcessExports
  *   （Electron 官方从 docs/api.json 自动生成，随 npm electron 包发布）
  * 实现侧：运行时加载 runtime/electron.js，枚举真实导出的模块/类及其方法
  *
@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '../..');
-const DTS = path.join(ROOT, 'test-app/node_modules/electron/electron.d.ts');
+const DTS = path.join(ROOT, 'tests/baseline/node_modules/electron/electron.d.ts');
 const OUT_DIR = process.argv.includes('--out')
   ? path.resolve(process.argv[process.argv.indexOf('--out') + 1])
   : path.join(__dirname, 'results');
