@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./assets/logo.svg" alt="ElecMini logo" width="120" />
+
 # ElecMini
 
 **The Electron JS API contract, without Chromium — rendered by the system WebView.**
@@ -46,6 +48,10 @@ It solves a specific problem: you want a **smaller installer, faster cold start,
 
 In one line: **Tauri targets new apps (Rust main process), ElecMini targets low-cost migration of existing Electron apps.**
 
+![Engine size comparison (measured, Linux x64)](./assets/size-comparison.svg)
+
+> The chart compares **bundled engine size**, not total installer size: ElecMini relies on the OS-provided WebView (a shared dependency), while Electron ships the entire Chromium with the app. Measured on Linux x64; see the SVG for the exact methodology.
+
 ## Architecture
 
 ```
@@ -86,6 +92,11 @@ npx elecmini check             # full (needs xvfb-run on Linux)
 
 > After install, the CLI also exposes `elecmini run / assess / probe / audit / check`; see `elecmini --help`.
 > Minimal example: [`examples/minimal/`](./examples/minimal/).
+
+![ElecMini demo: gate → host ready → IPC round-trip (real autotest output)](./assets/demo.gif)
+
+> The demo is real autotest terminal output (gate L0 → host ready → `ipcRenderer.invoke('ping')` → `PING_RESULT` → typed round-trip → quit).
+> The headless CI environment cannot capture the WebKitGTK window surface, so the demo uses measured terminal output; every line comes from an actual run.
 
 ## API support tiers
 

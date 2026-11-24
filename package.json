@@ -30,6 +30,7 @@
     "node": ">=22"
   },
   "files": [
+    "assets/",
     "README.md",
     "README.en.md",
     "CHANGELOG.md",

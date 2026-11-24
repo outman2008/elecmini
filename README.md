@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./assets/logo.svg" alt="ElecMini logo" width="120" />
+
 # ElecMini
 
 **保留 Electron 的 JS API 契约，去掉 Chromium，改用系统 WebView 渲染的桌面运行时。**
@@ -46,6 +48,10 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 
 一句话定位：**Tauri 面向新写应用（Rust 主进程），ElecMini 面向存量 Electron 应用的低成本迁移。**
 
+![引擎体积对比（Linux x64 实测）](./assets/size-comparison.svg)
+
+> 上图对比的是**随应用捆绑的引擎体积**，不是完整安装包大小：ElecMini 依赖系统已安装的 WebView（共享依赖），Electron 则随应用分发整个 Chromium。数据在 Linux x64 上实测，口径见 SVG 内标注。
+
 ## 架构
 
 ```
@@ -86,6 +92,11 @@ npx elecmini check             # 全量（Linux 需 xvfb-run）
 
 > CLI 装好后还有 `elecmini run / assess / probe / audit / check` 子命令，`elecmini --help` 查看。
 > 最小示例见 [`examples/minimal/`](./examples/minimal/)。
+
+![ElecMini 运行演示：门禁 → 宿主就绪 → IPC 往返（真实 autotest 输出）](./assets/demo.gif)
+
+> 演示为真实 autotest 的终端输出（门禁 L0 → host ready → `ipcRenderer.invoke('ping')` → `PING_RESULT` → 类型封装往返 → 退出）。
+> 因无头 CI 环境无法抓取 WebKitGTK 窗口画面，此处以终端实测输出呈现，所有行均来自实际运行日志。
 
 ## API 支持分级
 

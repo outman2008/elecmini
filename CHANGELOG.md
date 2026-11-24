@@ -18,6 +18,8 @@ Quality-gate and Codec regression hardening. No runtime behavior changes.
 
 - `package.json` `files` whitelist now carries the ratchet script and baseline so the published `ci/check.sh` does not reference a missing file.
 - `ci/README.md` documents the ratchet gate and its commands.
+- **Visual assets for the project homepage**: `assets/logo.svg` (electron-style open orbits + three platform satellites), `assets/size-comparison.svg` (measured Linux x64 engine-size comparison, ~118x), and `assets/demo.gif` (real autotest terminal output: gate → host ready → IPC round-trip). Wired into both READMEs; `assets/` added to the npm `files` whitelist.
+- **Promotion drafts** under `docs/promo/`: `show-hn.md` (English Show HN) and `juejin-article.md` (Chinese Juejin/V2EX). Drafts only — not auto-posted, and excluded from the npm package.
 
 ## [1.0.1] - 2026-11-24
 
