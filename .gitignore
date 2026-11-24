@@ -1,0 +1,35 @@
+# ElecMini — Git 忽略规则
+# 只提交源码、文档、配置与测试；构建产物/依赖不入库。
+
+# Rust 构建产物
+target/
+Cargo.lock
+
+# Node 依赖
+node_modules/
+
+# 打包产物与更新清单
+dist/
+
+# 截图对比候选/结果（基线保留，候选与报告为运行时生成）
+visual/candidates/
+visual/results/
+
+# 兼容基线/契约/遥测运行时结果（保留 .gitkeep 结构，结果文件忽略）
+compat/results/*.json
+contract/results/elecmini.json
+contract/results/electron.json
+contract/results/diff-report.json
+pack/webview-versions.jsonl
+
+# 系统/编辑器
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# 日志与临时
+*.log
+*.tmp
+/tmp/

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "version": "1.0.0",
+  "enabled": true,
+  "rolloutPercent": 10,
+  "channels": {
+    "stable": "stable",
+    "canary": "canary"
+  },
+  "whitelist": ["internal-tester-01", "internal-tester-02"],
+  "blacklist": [],
+  "salt": "elecmini-gray-v1",
+  "note": "灰度配置模板：rolloutPercent 为 canary 放量比例；上线时按 1%→5%→10%→50% 逐步提升，结合遥测 L0 覆盖率与失败率决策。"
+}

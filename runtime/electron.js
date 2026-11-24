@@ -1,0 +1,63 @@
+/**
+ * ElecMini P1 — require('electron') 的入口（shim 总装）
+ *
+ * launcher 通过 Module._load 钩子把目标应用的 `require('electron')` 指向本文件。
+ * 导出与 Electron 同名的模块，API 签名保持一致。
+ */
+
+const ctx = require('./context');
+const { App } = require('./modules/app');
+const { BrowserWindow } = require('./modules/browser-window');
+const { ipcMain, ipcRenderer, contextBridge } = require('./modules/ipc');
+const { dialog } = require('./modules/dialog');
+const { shell } = require('./modules/shell');
+const { Menu, MenuItem } = require('./modules/menu');
+const { screen } = require('./modules/screen');
+const { nativeTheme, bindThemeEvents } = require('./modules/native-theme');
+const { protocol } = require('./modules/protocol');
+const { safeStorage } = require('./modules/safe-storage');
+const { globalShortcut } = require('./modules/global-shortcut');
+const { powerMonitor, bindPowerEvents } = require('./modules/power-monitor');
+const { systemPreferences } = require('./modules/system-preferences');
+const { Tray, bindTrayEvents } = require('./modules/tray');
+const { session, bindSessionEvents } = require('./modules/session');
+
+const { store, rpc } = ctx.get();
+
+// P2：绑定 host 事件
+bindThemeEvents(rpc);
+bindPowerEvents(rpc);
+bindTrayEvents(rpc);
+bindSessionEvents(rpc);
+
+const app = new App();
+
+// nativeImage：P1 最小实现（toDataURL / fromDataURL / createEmpty）
+const nativeImage = {
+  createEmpty: () => ({ isEmpty: () => true, toDataURL: () => '' }),
+  fromDataURL: (url) => ({ isEmpty: () => false, toDataURL: () => url }),
+  fromPath: (p) => ({ isEmpty: () => false, toDataURL: () => `file://${p}` }),
+};
+
+module.exports = {
+  app,
+  BrowserWindow,
+  ipcMain,
+  ipcRenderer,
+  contextBridge,
+  dialog,
+  shell,
+  Menu,
+  MenuItem,
+  screen,
+  nativeImage,
+  nativeTheme,
+  // P2 档：真实实现（受平台能力限制时 host 返回明确降级原因）
+  session,
+  Tray,
+  protocol,
+  safeStorage,
+  globalShortcut,
+  powerMonitor,
+  systemPreferences,
+};

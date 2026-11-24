@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ElecMini P1 Target</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 28px; background: #0b1220; color: #e2e8f0; }
+    h1 { color: #38bdf8; }
+    button { padding: 8px 14px; margin: 4px 4px 4px 0; background: #2563eb; color: #fff; border: 0; border-radius: 5px; cursor: pointer; }
+    pre { background: #16213a; padding: 14px; border-radius: 6px; white-space: pre-wrap; min-height: 120px; }
+  </style>
+</head>
+<body>
+  <h1>ElecMini P1 Target</h1>
+  <p>渲染层经 preload 的 electronAPI 与 Node 主进程通信。</p>
+  <button onclick="doPing()">invoke('ping')</button>
+  <button onclick="doTypes()">echo types</button>
+  <pre id="out">waiting...</pre>
+  <script>
+    var out = document.getElementById('out');
+    function show(o) { out.textContent = JSON.stringify(o, null, 2); }
+    function doPing() { window.electronAPI.ping('hello-from-renderer').then(show).catch(function(e){ show({error:String(e)}); }); }
+    function doTypes() {
+      window.electronAPI.echoTypes({ map: new Map([['a', 1]]), date: new Date('2020-01-01'), arr: [1, 2, 3] })
+        .then(function(r){ show({ map: Array.from(r.map.entries()), date: r.date, arr: r.arr }); })
+        .catch(function(e){ show({ error: String(e) }); });
+    }
+    if (window.electronAPI && window.electronAPI.onWelcome) {
+      window.electronAPI.onWelcome(function (p) { show({ welcome: p }); });
+    }
+    show({ ready: true, hasApi: !!window.electronAPI, ua: navigator.userAgent });
+  </script>
+</body>
+</html>

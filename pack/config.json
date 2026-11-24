@@ -1,0 +1,28 @@
+{
+  "name": "ElecMini",
+  "version": "0.2.0",
+  "description": "Electron-compatible runtime with system WebView (B2)",
+  "skus": {
+    "slim": {
+      "label": "Slim",
+      "includesWebViewRuntime": false,
+      "note": "依赖系统 WebView（L0 直通；L1 引导安装；L2 提示）"
+    },
+    "full": {
+      "label": "Full",
+      "includesWebViewRuntime": true,
+      "note": "内置 WebView2 离线引导包（L2 兜底 SKU）"
+    }
+  },
+  "components": {
+    "host": "target/release/elecmini-host",
+    "runtime": "runtime",
+    "shim": "shim/src",
+    "app": "test-app-p2"
+  },
+  "targets": {
+    "win32-x64": { "hostSuffix": ".exe", "formats": ["dir", "nsis"] },
+    "darwin-arm64": { "hostSuffix": "", "formats": ["app", "dmg"] },
+    "linux-x64": { "hostSuffix": "", "formats": ["dir", "appimage", "deb"] }
+  }
+}

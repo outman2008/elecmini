@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ElecMini 关键页面（截图基线目标）</title>
+<style>
+  :root { --fg:#1f2937; --bg:#f9fafb; --brand:#2563eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:12px; padding:16px 24px; background:#fff; border-bottom:1px solid #e5e7eb; }
+  .logo { width:28px; height:28px; border-radius:8px; background:var(--brand); display:grid; place-items:center; color:#fff; font-weight:700; }
+  h1 { font-size:18px; margin:0; }
+  main { padding:24px; display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; }
+  .card h2 { font-size:14px; margin:0 0 8px; }
+  .card p { font-size:12px; color:#6b7280; margin:0; line-height:1.6; }
+  .btn { display:inline-block; margin-top:12px; padding:8px 16px; border-radius:8px; background:var(--brand); color:#fff; font-size:13px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:#dbeafe; color:#1e40af; font-size:11px; }
+  footer { padding:16px 24px; color:#9ca3af; font-size:12px; }
+</style>
+</head>
+<body>
+  <header><div class="logo">E</div><h1>ElecMini 控制台</h1><span class="badge">关键页面</span></header>
+  <main>
+    <div class="card"><h2>运行时</h2><p>Node sidecar + Rust host，系统 WebView 渲染。三引擎一致性验证目标。</p><span class="btn">详情</span></div>
+    <div class="card"><h2>门禁</h2><p>L0 直通 / L1 引导 / L2 提示 / L3 拦截，路径分布遥测（默认关闭）。</p><span class="btn">查看</span></div>
+    <div class="card"><h2>渲染基线</h2><p>:has / structuredClone / ES2022 能力探测，对齐三平台最低版本。</p><span class="btn">检测</span></div>
+  </main>
+  <footer>截图对比基线页面 · 固定布局，用于跨引擎像素差异判定</footer>
+</body>
+</html>

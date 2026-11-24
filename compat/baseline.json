@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "version": "1.0.0",
+  "updated": "2026-11-24",
+  "note": "渲染兼容基线：对齐方案文档 3.5.2 最低版本门禁。前端构建目标（browserslist）取三平台交集的最保守版本。",
+
+  "platforms": {
+    "windows": {
+      "engine": "WebView2 (Chromium)",
+      "minVersion": "120",
+      "minVersionCheck": "registry pv >= 120 或 Evergreen 最新版",
+      "browserslist": "chrome >= 120"
+    },
+    "macos": {
+      "engine": "WKWebView (WebKit)",
+      "minOS": "12",
+      "minVersionCheck": "macOS 12+（Safari 16+ 内核，无独立 WebView 版本）",
+      "browserslist": "safari >= 16"
+    },
+    "linux": {
+      "engine": "WebKitGTK",
+      "minVersion": "2.40",
+      "minVersionCheck": "pkg-config webkit2gtk-4.1 >= 2.40（Ubuntu 22.04+）",
+      "browserslist": "safari >= 15.4"
+    }
+  },
+
+  "browserslistIntersection": [
+    "chrome >= 120",
+    "safari >= 16",
+    "firefox >= 115"
+  ],
+
+  "requiredFeatures": {
+    "css": [
+      { "name": ":has() 选择器", "probe": "selector(:has(*))", "rationale": "目标应用布局依赖" },
+      { "name": "CSS inset", "probe": "inset: 0px", "rationale": "定位简写" },
+      { "name": "aspect-ratio", "probe": "aspect-ratio: 1/1", "rationale": "自适应容器" },
+      { "name": "flex gap", "probe": "gap: 1px", "rationale": "弹性布局间距" }
+    ],
+    "js": [
+      { "name": "structuredClone", "probe": "structuredClone", "rationale": "IPC 深拷贝语义" },
+      { "name": "Array.prototype.at", "probe": "Array.prototype.at", "rationale": "ES2022" },
+      { "name": "Object.hasOwn", "probe": "Object.hasOwn", "rationale": "ES2022" },
+      { "name": "Promise.any", "probe": "Promise.any", "rationale": "ES2021" },
+      { "name": "globalThis", "probe": "globalThis", "rationale": "跨环境全局" },
+      { "name": "AbortController", "probe": "AbortController", "rationale": "请求取消" },
+      { "name": "WeakRef", "probe": "WeakRef", "rationale": "缓存" }
+    ]
+  },
+
+  "forbiddenFeatures": [
+    { "name": "document.all", "rationale": "非标准，三引擎行为不一" },
+    { "name": "webkitStorageInfo", "rationale": "已废弃 WebKit 私有 API" }
+  ],
+
+  "visualTolerance": {
+    "pixelDiffPercent": 2.0,
+    "note": "截图对比：关键页面像素差异 > 2% 判为不可接受（可配置）"
+  }
+}

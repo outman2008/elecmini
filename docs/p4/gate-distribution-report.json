@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-24T05:22:19.977Z",
+  "total": 100,
+  "byLevel": {
+    "L0": 92,
+    "L1→L0": 3,
+    "L2": 3,
+    "L3": 2
+  },
+  "byReason": {
+    "webview_missing": 3,
+    "os_too_old": 2
+  },
+  "byPlatform": {
+    "linux/x64": 100
+  },
+  "l0Coverage": {
+    "count": 95,
+    "percent": 95
+  },
+  "l12Share": {
+    "count": 3,
+    "percent": 3
+  },
+  "breakEven": {
+    "thresholdPercent": 15,
+    "keepFullSku": false
+  }
+}

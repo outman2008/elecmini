@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>ElecMini 渲染特性探测</title></head>
+<body>
+<pre id="result">RUNNING</pre>
+<script src="feature-probe.js"></script>
+<script>
+  try {
+    var r = featureProbe();
+    document.getElementById('result').textContent = 'PROBE_RESULT=' + JSON.stringify(r);
+  } catch (e) {
+    document.getElementById('result').textContent = 'PROBE_RESULT=' + JSON.stringify({ error: String(e) });
+  }
+</script>
+</body>
+</html>

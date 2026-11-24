@@ -1,0 +1,15 @@
+{
+  "name": "@elecmini/shim",
+  "version": "0.1.0",
+  "description": "ElecMini electron API compatibility shim (P0 skeleton)",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "scan": "node src/scan-api.js --project ../test-app",
+    "test:ipc": "node src/ipc-types.test.js"
+  },
+  "devDependencies": {
+    "acorn": "^8.14.0",
+    "acorn-walk": "^8.3.4"
+  }
+}
