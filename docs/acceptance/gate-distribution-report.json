@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-24T07:24:25.316Z",
+  "total": 7,
+  "byLevel": {
+    "L0": 3,
+    "L1→L0": 1,
+    "L2": 2,
+    "L3": 1
+  },
+  "byReason": {
+    "install_failed": 1,
+    "injected": 2
+  },
+  "byPlatform": {
+    "win32/x64": 7
+  },
+  "byEngine": {
+    "WebView2": 1,
+    "injected": 6
+  },
+  "byVersion": {
+    "133.0.3065.82": 1
+  },
+  "l0Coverage": {
+    "count": 4,
+    "percent": 57.1,
+    "ci95LowerPercent": 25,
+    "targetPercent": 95,
+    "minSamples": 4
+  },
+  "l12Share": {
+    "count": 2,
+    "percent": 28.6
+  },
+  "goNoGo": {
+    "observedMeetsTarget": false,
+    "sampleAdequate": true,
+    "verdict": "FAIL",
+    "note": "L0 覆盖率未达目标，需评估 Full SKU 或收窄系统支持范围"
+  },
+  "breakEven": {
+    "thresholdPercent": 15,
+    "keepFullSku": true
+  }
+}
