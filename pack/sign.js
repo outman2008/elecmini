@@ -59,8 +59,30 @@ function plan(target, file) {
   };
 }
 
+/** 自测：验证三平台签名命令构造正确（不依赖真实凭据/工具） */
+function selfTest() {
+  const cases = [];
+  const w = plan('win32-x64', 'a.exe');
+  cases.push(['win: signtool + SHA256 + timestamp 服务器',
+    w.tool === 'signtool' && w.cmd.includes('SHA256') && w.cmd.some((x) => String(x).includes('timestamp'))]);
+  const m = plan('darwin-arm64', 'a.app');
+  cases.push(['mac: codesign + hardened runtime',
+    m.tool === 'codesign' && m.cmd.includes('runtime') && m.cmd.includes('--sign')]);
+  const l = plan('linux-x64', 'a.bin');
+  cases.push(['linux: gpg --detach-sign', l.tool === 'gpg' && l.cmd.includes('--detach-sign')]);
+  cases.push(['cmd 以工具名开头',
+    w.cmd[0] === 'signtool' && m.cmd[0] === 'codesign' && l.cmd[0] === 'gpg']);
+
+  let pass = 0;
+  for (const [name, ok] of cases) { console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}`); if (ok) pass++; }
+  console.log(`\n签名脚本：${pass}/${cases.length} passed`);
+  process.exit(pass === cases.length ? 0 : 1);
+}
+
 function main() {
-  const a = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('--self-test')) return selfTest();
+  const a = parseArgs(argv);
   if (!a.file) { console.error('用法：node pack/sign.js --target <t> --file <f> [--dry-run]'); process.exit(2); }
   if (!fs.existsSync(a.file)) { console.error(`文件不存在：${a.file}`); process.exit(2); }
 

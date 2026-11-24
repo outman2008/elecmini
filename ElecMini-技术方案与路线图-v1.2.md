@@ -551,6 +551,20 @@ gantt
 
 ## 附录 C · 修订记录
 
+### v1.3（2026-11-24，工程化与安全加固）
+| 项 | 内容 |
+|---|---|
+| 安全 | host 增加导航 origin 锚定 + IPC 来源校验（非受信页面 IPC 丢弃）；`ELECMINI_STRICT_NAV=1` 阻断外跳；Rust 单测覆盖 origin 解析 |
+| 平台 CI | GitHub Actions 扩为三平台（Linux 全量含差分/E2E；Windows/macOS 编译+单测，复用 check.sh 自动跳过无 xvfb 的 E2E） |
+| 质量门禁 | 新增 ESLint（正确性规则）+ Prettier + rustfmt + clippy(`-D warnings`)；CI 全量接入 |
+| 工程基线 | 根 README + MIT LICENSE；changelog 归档到 `docs/changelog/` |
+| 测试 | 新增 runtime 模块单测 17/17、preload 运行时 6/6、Codec 跨端一致性 4/4；差分契约加行为值用例（42/42）；探针去固定 sleep 改事件驱动 |
+| 能力 | `@electron/remote` 扫描识别 + 不支持清单（`docs/unsupported-apis.md`）；preload require 扩展 path/events/util + `node:` 前缀；clipboard HTML 端到端（xclip text/html + 内存镜像） |
+| 发布 | update.js 真实验签（Ed25519/RSA）+ bundle 防篡改重算（8/8）；build.js 产物自检 `--verify`（实测打包 41 files 可启动）；sign.js 自测 4/4 |
+| 结构 | host 拆分为 `util.rs`（工具层）+ `main.rs`（事件循环）；Codec 补齐 Error/RegExp/BigInt 跨端标签一致 |
+| 修复 | 补 clipboard.readText 返回对象 bug、protocol 注册未登记 bug、preload `_unb64` 非 4 倍数解码 bug、Codec 跨 realm `instanceof` 失效 |
+| 验证 | 全量 CI **24/24** 通过；`bash ci/check.sh` 一处定义三平台复用 |
+
 ### v1.2-p4（2026-11-24，P4 一致性治理交付）
 | 项 | 内容 |
 |---|---|
@@ -560,7 +574,7 @@ gantt
 | CI | `ci/check.sh` + GitHub Actions（ubuntu-22.04）；全套 11/11 通过 |
 | 截图对比 | `visual/` capture + Pillow 像素/phash 对比；相同图 0% pass、改背景 71.7% fail |
 | 灰度 | `pack/gray.js` 确定性分桶 + 白黑名单/Kill switch，13/13；`watch-webview.js` 版本监控实测 WebKitGTK 2.52.6 |
-| 报告 | `docs/p4/README.md` + 门禁分布报告 + 灰度报告 + `CHANGELOG-P4.md` |
+| 报告 | `docs/p4/README.md` + 门禁分布报告 + 灰度报告 + `docs/changelog/CHANGELOG-P4.md` |
 | 限制 | 真实 L1/L2 占比需生产遥测回填；三引擎截图仅 Chromium 实跑；CI 覆盖能力基线非最低版本机器 |
 
 ### v1.2-p3（2026-11-24，P3 打包分发交付）

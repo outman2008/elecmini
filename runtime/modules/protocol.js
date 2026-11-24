@@ -12,17 +12,30 @@
  */
 const ctx = require('../context');
 
+/** 登记已注册 scheme（供 isProtocolRegistered / isProtocolHandled 查询，保持一致） */
+function markRegistered(scheme) {
+  const c = ctx.get();
+  if (!c._registeredProtocols) c._registeredProtocols = {};
+  c._registeredProtocols[scheme] = true;
+}
+function markUnregistered(scheme) {
+  const c = ctx.get();
+  if (c._registeredProtocols) delete c._registeredProtocols[scheme];
+}
+
 const protocol = {
   /** 注册字符串协议：handler(path) => string。此处收集静态路由（首次调用时下发） */
   registerStringProtocol(scheme, handler) {
     const routes = {};
     // 约定：若 handler 带 .routes 属性则直接用；否则注册一个可查询的 shim 函数表
     if (handler && typeof handler.routes === 'object') Object.assign(routes, handler.routes);
+    markRegistered(scheme);
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'string', routes });
   },
 
   /** 注册文件协议：baseDir 为根目录，scheme:///path 映射到 baseDir/path */
   registerFileProtocol(scheme, baseDir) {
+    markRegistered(scheme);
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'file', baseDir });
   },
 
@@ -34,16 +47,19 @@ const protocol = {
   registerBufferProtocol(scheme, handler, mimeType = 'application/octet-stream') {
     const routes = {};
     if (handler && typeof handler.routes === 'object') Object.assign(routes, handler.routes);
+    markRegistered(scheme);
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'buffer', routes, mime: mimeType });
   },
 
   /** P6-B：Stream 协议复用 File 流式映射（baseDir 为根目录） */
   registerStreamProtocol(scheme, baseDir) {
+    markRegistered(scheme);
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'stream', baseDir });
   },
 
   unregisterProtocol(scheme) {
     // host 以空路由覆盖实现注销（保留 scheme 槽位，wry build 后不可动态移除）
+    markUnregistered(scheme);
     return ctx.get().rpc.call('protocol:register', { scheme, kind: 'string', routes: {} });
   },
 

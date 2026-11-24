@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use tao::{
     event::{Event, StartCause, WindowEvent},
-    event_loop::{ControlFlow, EventLoopProxy, EventLoopBuilder},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::WindowBuilder,
 };
 
@@ -42,7 +42,11 @@ fn main() {
         match rx.recv_timeout(Duration::from_secs(3)) {
             Ok((w, h)) => {
                 eprintln!("[S2] sidecar sync getBounds() = ({}, {})", w, h);
-                assert_eq!((w, h), (640, 480), "S2 FAIL: 未拿到主线程 resize 后的真实值");
+                assert_eq!(
+                    (w, h),
+                    (640, 480),
+                    "S2 FAIL: 未拿到主线程 resize 后的真实值"
+                );
                 eprintln!("[S2] PASS: 跨线程同步调用返回真实值");
             }
             Err(e) => eprintln!("[S2] FAIL: 同步调用超时/失败: {:?}", e),
@@ -73,7 +77,10 @@ fn main() {
                     *control_flow = ControlFlow::Exit;
                 }
             }
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
                 *control_flow = ControlFlow::Exit;
             }
             _ => {}

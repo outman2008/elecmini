@@ -74,15 +74,7 @@ fn to_wide(s: &str) -> Vec<u16> {
 fn reg_read_sz(root: isize, subkey: &str, value: &str) -> Option<String> {
     let mut key = 0isize;
     let sub = to_wide(subkey);
-    let rc = unsafe {
-        RegOpenKeyExW(
-            root,
-            sub.as_ptr(),
-            0,
-            KEY_READ,
-            &mut key as *mut isize,
-        )
-    };
+    let rc = unsafe { RegOpenKeyExW(root, sub.as_ptr(), 0, KEY_READ, &mut key as *mut isize) };
     if rc != ERROR_SUCCESS {
         return None;
     }
@@ -149,7 +141,13 @@ fn policy_blocks_bootstrapper() -> bool {
     let mut key = 0isize;
     let sub = to_wide(r"SOFTWARE\Policies\Microsoft\EdgeWebView");
     let rc = unsafe {
-        RegOpenKeyExW(HKEY_LOCAL_MACHINE, sub.as_ptr(), 0, KEY_READ, &mut key as *mut isize)
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            sub.as_ptr(),
+            0,
+            KEY_READ,
+            &mut key as *mut isize,
+        )
     };
     if rc != ERROR_SUCCESS {
         return false; // 无策略键 = 不禁止
@@ -200,13 +198,10 @@ fn probe_version() -> (Option<String>, u64, String) {
         );
     }
 
-    let candidates: Vec<(String, &str)> = [
-        hklm.map(|v| (v, "HKLM")),
-        hkcu.map(|v| (v, "HKCU")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let candidates: Vec<(String, &str)> = [hklm.map(|v| (v, "HKLM")), hkcu.map(|v| (v, "HKCU"))]
+        .into_iter()
+        .flatten()
+        .collect();
 
     let mut best: Option<(String, u64, &str)> = None;
     for (ver, src) in candidates {
@@ -220,7 +215,19 @@ fn probe_version() -> (Option<String>, u64, String) {
     }
 
     match best {
-        Some((v, m, s)) => (Some(v), m, format!("{}:{}", s, if s == "TEST_PV" { "injected" } else { "registry" })),
+        Some((v, m, s)) => (
+            Some(v),
+            m,
+            format!(
+                "{}:{}",
+                s,
+                if s == "TEST_PV" {
+                    "injected"
+                } else {
+                    "registry"
+                }
+            ),
+        ),
         None => (None, 0, "none".into()),
     }
 }
@@ -276,11 +283,17 @@ fn main() {
 
     let (pv, major, source) = probe_version();
     println!("[probe] registry pv = {:?}", pv);
-    println!("[probe] major version = {}  (min baseline = {})", major, MIN_MAJOR);
+    println!(
+        "[probe] major version = {}  (min baseline = {})",
+        major, MIN_MAJOR
+    );
     println!("[probe] source = {}", source);
 
     let api = api_recheck();
-    println!("[probe] API recheck = {:?}", api.as_deref().unwrap_or("<not installed>"));
+    println!(
+        "[probe] API recheck = {:?}",
+        api.as_deref().unwrap_or("<not installed>")
+    );
     // 注入的 API 版本串必须按基线比较（如 ELECMINI_TEST_API_VERSION=109 应判不满足），
     // 不能只看 Some/None——wine 阶段的用例均注入 >=120，掩盖了此问题。
     let api_ok = if let Some(ref v) = api {
@@ -298,7 +311,9 @@ fn main() {
     let policy_block = policy_blocks_bootstrapper();
     println!("[probe] policy blocks bootstrapper = {}", policy_block);
 
-    let offline = std::env::var("ELECMINI_TEST_OFFLINE").map(|v| v == "1").unwrap_or(false);
+    let offline = std::env::var("ELECMINI_TEST_OFFLINE")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     println!("[probe] offline (simulated) = {}", offline);
 
     let level = decide(major, api_ok, policy_block, offline);
@@ -306,8 +321,14 @@ fn main() {
     println!("------------------------------------------------------------");
     match level {
         PathLevel::L0 => println!("[DECISION] {} — WebView2 满足基线，正常启动。", level),
-        PathLevel::L1 => println!("[DECISION] {} — Runtime 缺失/过旧，联网引导安装 Evergreen Bootstrapper。", level),
-        PathLevel::L2 => println!("[DECISION] {} — 无法引导（离线/策略禁止），给出离线包指引或改发 Full SKU，绝不白屏。", level),
+        PathLevel::L1 => println!(
+            "[DECISION] {} — Runtime 缺失/过旧，联网引导安装 Evergreen Bootstrapper。",
+            level
+        ),
+        PathLevel::L2 => println!(
+            "[DECISION] {} — 无法引导（离线/策略禁止），给出离线包指引或改发 Full SKU，绝不白屏。",
+            level
+        ),
         PathLevel::L3 => println!("[DECISION] {} — （Windows 不走此路径）", level),
     }
     println!("============================================================");

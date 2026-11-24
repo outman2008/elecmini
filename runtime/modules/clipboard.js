@@ -12,12 +12,11 @@
 const ctx = require('../context');
 
 const clipboard = {
-  readText() { return ctx.get().rpc.call('shell:readClipboard', {}); },
+  readText() { return ctx.get().rpc.call('shell:readClipboard', {}).then((r) => r?.text ?? ''); },
   writeText(text) { return ctx.get().rpc.call('shell:writeClipboard', { text: String(text) }); },
-  // Electron 还支持 readHTML/writeHTML/readBuffer/writeBuffer/clear，
-  // ElecMini 仅实现纯文本；以下方法显式抛错，避免静默失败。
-  readHTML() { throw new Error('[ElecMini] clipboard.readHTML 未实现（仅支持纯文本）'); },
-  writeHTML() { throw new Error('[ElecMini] clipboard.writeHTML 未实现（仅支持纯文本）'); },
+  // 富文本：经 host 的 xclip -t text/html 读写，无头/无 owner 时回退内存镜像
+  readHTML() { return ctx.get().rpc.call('shell:readClipboardHTML', {}).then((r) => r?.html ?? ''); },
+  writeHTML(html) { return ctx.get().rpc.call('shell:writeClipboardHTML', { html: String(html) }); },
   clear() { return ctx.get().rpc.call('shell:writeClipboard', { text: '' }); },
 };
 

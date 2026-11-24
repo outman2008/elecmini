@@ -53,7 +53,7 @@
   `ensure-online.ts`/`util.ts` 用 `buttonIndex === 1` 判断是否退出。修复前降级桩返回
   `Promise<null>`（`JSON.stringify` 显 `{}`），`Promise === 1` 恒为 false —— 静默失真。
   **已修复**：同步降级桩改为同步返回 `defaultId`（number，默认 0），caprine `defaultId=0`
-  走到"继续/Wait"分支，不误退出（见 `CHANGELOG-sync-degrade-fix.md`）。
+  走到"继续/Wait"分支，不误退出（见 `docs/changelog/CHANGELOG-sync-degrade-fix.md`）。
 - `nodeIntegration`/`contextIsolation` 配置：架构冲突，须改为 contextBridge 模式。
 - 降级 API（getUserDefault/globalShortcut/setSpellCheckerLanguages/Tray）运行时均可调用，属 mirror/降级态。
 

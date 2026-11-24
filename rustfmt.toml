@@ -1,0 +1,3 @@
+# ElecMini Rust 格式约定（与 CI `cargo fmt --check` 对齐）
+edition = "2021"
+max_width = 100

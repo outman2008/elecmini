@@ -90,6 +90,19 @@ function analyzeFile(file) {
 
   // 记录 electron 的导入绑定名
   const electronBindings = new Set(['electron']); // 兜底
+  // @electron/remote：架构不支持（把主进程对象暴露到渲染层，与安全模型冲突）。
+  // 单独识别并登记 unsupported，避免真实项目（如 caprine）静默崩溃却扫描不到。
+  const REMOTE_SOURCES = new Set(['@electron/remote', '@electron/remote/main', '@electron/remote/renderer']);
+  const recordRemote = (line) => findings.push({
+    module: '@electron/remote',
+    method: 'import',
+    status: '❌不支持',
+    line,
+    kind: 'import',
+    unsupported: true,
+    note: '架构不支持：@electron/remote 将主进程对象暴露到渲染层，与 ElecMini 安全模型冲突',
+    rewrite: '@electron/remote → 改用 ipcMain.handle + ipcRenderer.invoke 显式通道',
+  });
   walk.simple(ast, {
     ImportDeclaration(node) {
       if (node.source.value === 'electron') {
@@ -97,11 +110,15 @@ function analyzeFile(file) {
           if (s.type === 'ImportDefaultSpecifier') electronBindings.add(s.local.name);
           if (s.type === 'ImportSpecifier') electronBindings.add(s.imported.name);
         }
+      } else if (REMOTE_SOURCES.has(node.source.value)) {
+        recordRemote(node.loc?.start.line);
       }
     },
     CallExpression(node) {
-      if (node.callee?.name === 'require' && node.arguments[0]?.value === 'electron') {
-        // const { BrowserWindow } = require('electron') 在 VariableDeclarator 里处理
+      if (node.callee?.name === 'require') {
+        const src = node.arguments[0]?.value;
+        // electron 的 require 绑定在 VariableDeclarator 处理；此处只识别 remote，避免重复
+        if (REMOTE_SOURCES.has(src)) recordRemote(node.loc?.start.line);
       }
     },
     VariableDeclarator(node) {

@@ -7,25 +7,37 @@ on:
   workflow_dispatch:
 
 jobs:
-  checks:
-    name: 全套检查（Linux）
-    runs-on: ubuntu-22.04  # 对齐最低支持系统（WebKitGTK 2.40+ 基线）
+  # ---------- Linux：全量（WebKitGTK + 差分契约 + E2E）----------
+  checks-linux:
+    name: 全套检查（Linux / WebKitGTK）
+    runs-on: ubuntu-22.04 # 对齐最低支持系统（WebKitGTK 2.40+ 基线）
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装系统依赖
+      - name: 安装系统依赖（WebKitGTK + Electron 运行库 + Xvfb）
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev xvfb chromium \
-            libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+            libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libasound2
 
       - name: 设置 Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
+      - name: 安装根依赖（lint 工具）
+        run: npm install --no-audit --no-fund
+
+      - name: 安装 test-app 依赖（Electron 类型基线 + 差分契约二进制）
+        run: npm --prefix test-app ci --no-audit --no-fund
+
       - name: 设置 Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: 配置 cargo 镜像（可选加速）
         run: mkdir -p ~/.cargo && printf '[source.crates-io]\nreplace-with = "tuna"\n[source.tuna]\nregistry = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"\n' > ~/.cargo/config.toml || true
@@ -37,9 +49,58 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: elecmini-reports
+          name: elecmini-reports-linux
           path: |
             compat/results/
             contract/results/
             dist/*.json
           if-no-files-found: ignore
+
+  # ---------- Windows：编译 + 静态检查 + 单测（WebView2）----------
+  # 说明：Windows runner 无 xvfb，ci/check.sh 自动跳过需窗口的 E2E；
+  # 未安装 test-app/node_modules，contract 审计检查自动跳过。
+  checks-windows:
+    name: 编译+单测（Windows / WebView2）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 安装根依赖
+        run: npm install --no-audit --no-fund
+
+      - name: 设置 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 运行检查（E2E 自动跳过）
+        shell: bash
+        run: bash ci/check.sh
+
+  # ---------- macOS：编译 + 静态检查 + 单测（WKWebView）----------
+  checks-macos:
+    name: 编译+单测（macOS / WKWebView）
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 安装根依赖
+        run: npm install --no-audit --no-fund
+
+      - name: 设置 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 运行检查（E2E 自动跳过）
+        run: bash ci/check.sh

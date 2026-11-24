@@ -70,6 +70,9 @@ app.whenReady().then(() => {
     return { isArray: Array.isArray(list), hasBounds: !!(list[0] && list[0].bounds) };
   });
   check('session.defaultSession_exists', () => !!session.defaultSession && !!session.defaultSession.webRequest);
+  // 行为值用例（非仅类型）：两边应返回完全一致的值
+  check('session.defaultSession_singleton', () => session.defaultSession === session.defaultSession);
+  check('protocol.isProtocolHandled_unregistered', () => protocol.isProtocolHandled('elecmini-never-registered'));
   check('session.webRequest.onBeforeRequest_type', () => typeof session.defaultSession.webRequest.onBeforeRequest);
   check('screen.getPrimaryDisplay', () => {
     const d = screen.getPrimaryDisplay();

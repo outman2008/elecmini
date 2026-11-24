@@ -50,19 +50,46 @@ function generateRelease(dir, version, sku, options = {}) {
   return release;
 }
 
-/** 校验下载目录与 release 清单一致（模拟签名校验钩子） */
-function verifyRelease(release, downloadDir) {
+/**
+ * 真实签名校验（Ed25519 / RSA-SHA256）。
+ * release.signature = { algorithm: 'ed25519'|'rsa-sha256', value: <base64>, publicKey?: <pem> }
+ * 公钥优先取参数 / 环境变量 ELECMINI_UPDATE_PUBKEY，其次取 signature.publicKey。
+ * 无 signature 时返回 skipped（不视为失败，便于无签名场景）。
+ */
+function verifySignature(release, publicKeyPem) {
+  if (!release.signature) return { ok: true, skipped: true };
+  const sig = release.signature;
+  const pem = publicKeyPem || process.env.ELECMINI_UPDATE_PUBKEY || sig.publicKey;
+  if (!pem) return { ok: false, problems: ['signature present but no public key provided'] };
+  const data = Buffer.from(release.bundleSha256, 'utf8');
+  try {
+    const value = Buffer.from(sig.value, 'base64');
+    const ok = sig.algorithm === 'ed25519'
+      ? crypto.verify(null, data, pem, value)
+      : crypto.verify('sha256', data, pem, value);
+    return ok ? { ok: true } : { ok: false, problems: ['signature verification failed'] };
+  } catch (e) {
+    return { ok: false, problems: [`signature error: ${e.message}`] };
+  }
+}
+
+/** 校验下载目录与 release 清单一致，并重算 bundle 摘要 + 验签（防 files 被篡改） */
+function verifyRelease(release, downloadDir, publicKeyPem) {
   const problems = [];
   for (const f of release.files) {
     const p = path.join(downloadDir, f.path);
     if (!fs.existsSync(p)) { problems.push(`missing: ${f.path}`); continue; }
     if (sha256(p) !== f.sha256) problems.push(`hash mismatch: ${f.path}`);
   }
-  // 签名校验钩子：若 release 带 signature，校验 bundle 摘要（真实实现用公钥验签）
-  if (release.signature) {
-    const expected = release.signature.bundleSha256;
-    if (expected !== release.bundleSha256) problems.push('signature bundle mismatch');
+  // 重算 bundle 摘要：防「改 files 但保留旧 bundleSha256」的篡改
+  const bundle = crypto.createHash('sha256');
+  for (const f of [...release.files].sort((a, b) => a.path.localeCompare(b.path))) bundle.update(f.sha256);
+  if (bundle.digest('hex') !== release.bundleSha256) {
+    problems.push('bundle digest mismatch (files list tampered)');
   }
+  // 真实签名校验
+  const sig = verifySignature(release, publicKeyPem);
+  if (!sig.ok) problems.push(...sig.problems);
   return { ok: problems.length === 0, problems };
 }
 
@@ -79,7 +106,7 @@ function applyWithRollback(currentDir, stagingDir, backupDir) {
     fs.cpSync(currentDir, backupDir, { recursive: true, force: true });
     log.push('backup: ok');
   }
-  // 2. 切换（模拟：删当前，复制 staging）
+  // 2. 切换（真实：删当前目录，复制 staging）
   try {
     if (fail) throw new Error('injected switch failure');
     if (fs.existsSync(currentDir)) fs.rmSync(currentDir, { recursive: true, force: true });
@@ -111,6 +138,23 @@ function selfTest() {
   const v1 = verifyRelease(rel, app);
   const v1bad = verifyRelease(rel, tmp); // 目录不对 → mismatch
 
+  // 真实签名校验（Ed25519）：签名通过 / bundle 篡改 / files 篡改
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const pem = publicKey.export({ type: 'spki', format: 'pem' });
+  const signed = {
+    ...rel,
+    signature: {
+      algorithm: 'ed25519',
+      value: crypto.sign(null, Buffer.from(rel.bundleSha256, 'utf8'), privateKey).toString('base64'),
+    },
+  };
+  const sigOk = verifyRelease(signed, app, pem);
+  const sigBad = verifyRelease({ ...signed, bundleSha256: 'deadbeef'.repeat(8) }, app, pem);
+  const fileBad = verifyRelease(
+    { ...signed, files: rel.files.map((f) => ({ ...f, sha256: 'x' + f.sha256.slice(1) })) },
+    app, pem,
+  );
+
   const staging = path.join(tmp, 'staging');
   fs.mkdirSync(staging, { recursive: true });
   fs.writeFileSync(path.join(staging, 'v2.txt'), 'version-2');
@@ -125,6 +169,9 @@ function selfTest() {
     ['生成 manifest', rel.files.length === 1 && rel.format === 'elecmini-update/1'],
     ['校验通过', v1.ok === true],
     ['校验失败检出', v1bad.ok === false && v1bad.problems.length > 0],
+    ['签名校验通过(ed25519)', sigOk.ok === true],
+    ['签名/bundle 篡改检出', sigBad.ok === false && sigBad.problems.length > 0],
+    ['files 篡改检出', fileBad.ok === false],
     ['更新应用成功', applyOk.ok === true && !applyOk.rolledBack],
     ['失败回滚成功', applyFail.ok === false && applyFail.rolledBack === true],
   ];

@@ -112,7 +112,7 @@ ElecMini 是 tao+wry + Node sidecar，没有 Electron 二进制与内部模块�
 
 ### P6：降级 API 补齐与治理（本次）
 
-针对上一版 98 个降级桩逐类评估"能否补齐"，按收益/成本分四步推进，结果见 `CHANGELOG-api-governance.md`：
+针对上一版 98 个降级桩逐类评估"能否补齐"，按收益/成本分四步推进，结果见 `docs/changelog/CHANGELOG-api-governance.md`：
 
 | 步骤 | 动作 | 结果 |
 |---|---|---|

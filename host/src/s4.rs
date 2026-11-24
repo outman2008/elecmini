@@ -1,9 +1,11 @@
 //! S4 — Windows WebView2 专属能力（WebResourceRequested / CDP / DevTools）
 //!
 //! 跨平台 host 的能力探测与降级层。Windows 上直接调用 WebView2 COM：
-//!   - AddWebResourceRequestedFilter + add_WebResourceRequested：改请求头
-//!   - CallDevToolsProtocolMethod / GetDevToolsProtocolEventReceiver：CDP 命令与事件
-//!   - OpenDevToolsWindow：打开 Chromium DevTools
+//!
+//! - `AddWebResourceRequestedFilter` + `add_WebResourceRequested`：改请求头
+//! - `CallDevToolsProtocolMethod` / `GetDevToolsProtocolEventReceiver`：CDP 命令与事件
+//! - `OpenDevToolsWindow`：打开 Chromium DevTools
+//!
 //! 其他平台返回明确 unsupported，不静默假装成功。
 
 use serde_json::{json, Value};
@@ -13,16 +15,21 @@ use std::sync::{Arc, Mutex};
 /// 请求头注入规则：pattern 为 URL 子串（"*" 表示全部）
 #[derive(Clone, Default)]
 pub struct S4State {
+    #[allow(dead_code)] // 跨平台条件编译：仅 Windows 分支读取
     pub rules: Vec<RequestRule>,
+    #[allow(dead_code)]
     pub tokens: Vec<i64>,
 }
 
 #[derive(Clone)]
 pub struct RequestRule {
+    #[allow(dead_code)]
     pub pattern: String,
+    #[allow(dead_code)]
     pub headers: Vec<(String, String)>,
 }
 
+#[allow(dead_code)] // 非 Windows 构建下未使用（Windows 分支 emit 事件）
 fn emit(out: &Arc<Mutex<io::Stdout>>, msg: &Value) {
     let mut o = out.lock().unwrap();
     use std::io::Write;
@@ -36,11 +43,12 @@ fn detect_webview2_version() -> Option<String> {
     use windows::{
         core::HSTRING,
         Win32::System::Registry::{
-            RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE,
-            KEY_READ, REG_VALUE_TYPE,
+            RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
+            REG_VALUE_TYPE,
         },
     };
-    const SUBKEY: &str = r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+    const SUBKEY: &str =
+        r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
     let subkey = HSTRING::from(SUBKEY);
     let value = HSTRING::from("pv");
     let mut key = HKEY::default();
@@ -50,20 +58,29 @@ fn detect_webview2_version() -> Option<String> {
     let mut ty = REG_VALUE_TYPE(0);
     let mut len = 0u32;
     let rc = unsafe { RegQueryValueExW(key, &value, None, Some(&mut ty), None, Some(&mut len)) };
-    if rc.is_err() || len == 0 || ty.0 != 1 { // REG_SZ
+    if rc.is_err() || len == 0 || ty.0 != 1 {
+        // REG_SZ
         let _ = unsafe { RegCloseKey(key) };
         return None;
     }
     let mut buf = vec![0u16; len as usize / 2 + 1];
     let rc = unsafe {
         RegQueryValueExW(
-            key, &value, None, None,
-            Some(buf.as_mut_ptr() as *mut u8), Some(&mut len),
+            key,
+            &value,
+            None,
+            None,
+            Some(buf.as_mut_ptr() as *mut u8),
+            Some(&mut len),
         )
     };
     let _ = unsafe { RegCloseKey(key) };
-    if rc.is_err() { return None; }
-    while buf.last() == Some(&0) { buf.pop(); }
+    if rc.is_err() {
+        return None;
+    }
+    while buf.last() == Some(&0) {
+        buf.pop();
+    }
     Some(String::from_utf16_lossy(&buf))
 }
 
@@ -94,9 +111,16 @@ pub fn capabilities() -> Value {
 
 /// 订阅 webRequest 规则（在窗口创建前调用，供 WebResourceRequested 回调同步执行）
 pub fn subscribe_request(state: &Arc<Mutex<S4State>>, params: &Value) -> Value {
-    let pattern = params.get("pattern")
+    let pattern = params
+        .get("pattern")
         .and_then(Value::as_str)
-        .or_else(|| params.get("urls").and_then(Value::as_array).and_then(|a| a.first()).and_then(Value::as_str))
+        .or_else(|| {
+            params
+                .get("urls")
+                .and_then(Value::as_array)
+                .and_then(|a| a.first())
+                .and_then(Value::as_str)
+        })
         .unwrap_or("*")
         .to_string();
     let mut headers = Vec::new();
@@ -107,7 +131,11 @@ pub fn subscribe_request(state: &Arc<Mutex<S4State>>, params: &Value) -> Value {
     }
     #[cfg(target_os = "windows")]
     {
-        state.lock().unwrap().rules.push(RequestRule { pattern, headers });
+        state
+            .lock()
+            .unwrap()
+            .rules
+            .push(RequestRule { pattern, headers });
         json!({ "ok": true, "supported": true, "engine": "WebResourceRequested" })
     }
     #[cfg(not(target_os = "windows"))]
@@ -118,7 +146,9 @@ pub fn subscribe_request(state: &Arc<Mutex<S4State>>, params: &Value) -> Value {
 }
 
 #[cfg(target_os = "windows")]
-fn core_webview(webview: &wry::WebView) -> Result<webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, String> {
+fn core_webview(
+    webview: &wry::WebView,
+) -> Result<webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, String> {
     use wry::WebViewExtWindows;
     let controller = webview.controller();
     unsafe { controller.CoreWebView2().map_err(|e| e.to_string()) }
@@ -133,8 +163,8 @@ pub fn install_request_hook(
     win_id: u32,
 ) -> Result<(), String> {
     use webview2_com::{
-        Microsoft::Web::WebView2::Win32::COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
-        WebResourceRequestedEventHandler, take_pwstr,
+        take_pwstr, Microsoft::Web::WebView2::Win32::COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
+        WebResourceRequestedEventHandler,
     };
     use windows::core::{HSTRING, PWSTR};
 
@@ -145,7 +175,9 @@ pub fn install_request_hook(
 
     let state_for_hook = state.clone();
     let handler = WebResourceRequestedEventHandler::create(Box::new(move |_, args| {
-        let Some(args) = args else { return Ok(()); };
+        let Some(args) = args else {
+            return Ok(());
+        };
         let req = unsafe { args.Request()? };
 
         let mut uri_pw = PWSTR::null();
@@ -158,7 +190,11 @@ pub fn install_request_hook(
             String::new()
         };
 
-        let matched: Vec<_> = state_for_hook.lock().unwrap().rules.iter()
+        let matched: Vec<_> = state_for_hook
+            .lock()
+            .unwrap()
+            .rules
+            .iter()
             .filter(|r| r.pattern == "*" || uri.contains(&r.pattern))
             .flat_map(|r| r.headers.clone())
             .collect();
@@ -175,11 +211,14 @@ pub fn install_request_hook(
                 }
             }
         }
-        emit(&out, &json!({
-            "event": "webRequest:beforeRequest",
-            "winId": win_id,
-            "details": { "id": uri.clone(), "url": uri, "method": method, "injected": !matched.is_empty() },
-        }));
+        emit(
+            &out,
+            &json!({
+                "event": "webRequest:beforeRequest",
+                "winId": win_id,
+                "details": { "id": uri.clone(), "url": uri, "method": method, "injected": !matched.is_empty() },
+            }),
+        );
         Ok(())
     }));
     let mut token = 0i64;
@@ -209,26 +248,31 @@ pub fn cdp_send(
     params: Value,
 ) -> Result<(), String> {
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-    use windows::core::{HSTRING, PCWSTR};
     #[allow(unused_imports)]
     use windows::core::Result as WinResult;
+    use windows::core::{HSTRING, PCWSTR};
 
     let wv = core_webview(webview)?;
     let method_h = HSTRING::from(method);
     let params_h = HSTRING::from(params.to_string());
-    let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |hr: WinResult<()>, result: String| {
-        let ok = hr.is_ok();
-        let text = result;
-        let parsed = serde_json::from_str::<Value>(&text).unwrap_or(json!(null));
-        emit(&out, &json!({
-            "event": "cdp:result",
-            "id": id,
-            "ok": ok,
-            "result": if ok { parsed } else { json!(null) },
-            "error": if ok { Value::Null } else { json!(text) },
-        }));
-        Ok(())
-    }));
+    let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+        move |hr: WinResult<()>, result: String| {
+            let ok = hr.is_ok();
+            let text = result;
+            let parsed = serde_json::from_str::<Value>(&text).unwrap_or(json!(null));
+            emit(
+                &out,
+                &json!({
+                    "event": "cdp:result",
+                    "id": id,
+                    "ok": ok,
+                    "result": if ok { parsed } else { json!(null) },
+                    "error": if ok { Value::Null } else { json!(text) },
+                }),
+            );
+            Ok(())
+        },
+    ));
     unsafe {
         wv.CallDevToolsProtocolMethod(
             PCWSTR::from_raw(method_h.as_ptr()),
@@ -259,21 +303,27 @@ pub fn cdp_subscribe(
     win_id: u32,
     event_name: String,
 ) -> Result<(), String> {
-    use webview2_com::{DevToolsProtocolEventReceivedEventHandler, take_pwstr};
+    use webview2_com::{take_pwstr, DevToolsProtocolEventReceivedEventHandler};
     use windows::core::{HSTRING, PWSTR};
 
     let wv = core_webview(webview)?;
-    let receiver = unsafe { wv.GetDevToolsProtocolEventReceiver(&HSTRING::from(event_name.clone())) }
-        .map_err(|e| format!("GetDevToolsProtocolEventReceiver({event_name}): {e}"))?;
+    let receiver =
+        unsafe { wv.GetDevToolsProtocolEventReceiver(&HSTRING::from(event_name.clone())) }
+            .map_err(|e| format!("GetDevToolsProtocolEventReceiver({event_name}): {e}"))?;
     let handler = DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_, args| {
-        let Some(args) = args else { return Ok(()); };
+        let Some(args) = args else {
+            return Ok(());
+        };
         let mut pw = PWSTR::null();
         unsafe { args.ParameterObjectAsJson(&mut pw)? };
         let params = serde_json::from_str::<Value>(&take_pwstr(pw)).unwrap_or(json!(null));
-        emit(&out, &json!({
-            "event": "cdp:event", "winId": win_id,
-            "eventName": event_name, "params": params,
-        }));
+        emit(
+            &out,
+            &json!({
+                "event": "cdp:event", "winId": win_id,
+                "eventName": event_name, "params": params,
+            }),
+        );
         Ok(())
     }));
     let mut token = 0i64;

@@ -55,7 +55,7 @@ app.whenReady().then(() => {
   win.webContents.on('did-finish-load', () => {
     win.webContents.executeJavaScript('1 + 1').then(v => {
       check('__execJS', () => v);
-      setTimeout(() => { flush(); app.quit(); }, 150);
+      flush(); app.quit();
     }).catch(e => { check('__execJS.error', () => String(e)); flush(); app.quit(); });
   });
 });

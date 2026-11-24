@@ -1,0 +1,18 @@
+{
+  "name": "elecmini",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron API contract with system WebView rendering (tao + wry + Node sidecar)",
+  "license": "MIT",
+  "scripts": {
+    "lint": "eslint runtime shim/src pack contract",
+    "format:check": "prettier --check \"runtime/**/*.js\" \"shim/src/**/*.js\" \"pack/**/*.js\" \"contract/**/*.js\"",
+    "test": "bash ci/check.sh --quick"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2"
+  }
+}

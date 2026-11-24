@@ -21,8 +21,26 @@ run() {
 
 has_xvfb() { command -v xvfb-run >/dev/null 2>&1; }
 
+# 0) 质量门禁：JS lint / Rust 格式 / clippy
+if [ -d node_modules ] && command -v npx >/dev/null 2>&1; then
+  run "JS lint(eslint)" bash -c 'npx eslint runtime shim/src pack contract migrate/*.js'
+else
+  echo "[SKIP] JS lint：未安装 node_modules（npm install 后启用）"
+fi
+if command -v cargo >/dev/null 2>&1; then
+  run "Rust 格式(cargo fmt --check)" bash -c 'cargo fmt --check'
+  if [ "$QUICK" -eq 0 ]; then
+    run "Rust clippy(-D warnings)" bash -c 'cargo clippy --release -p elecmini-host -- -D warnings 2>&1 | grep -E "^error|^warning: unused|Finished" | tail -3; test ${PIPESTATUS[0]} -eq 0'
+  fi
+fi
+
 # 1) IPC 类型层单测
 run "IPC 类型层单测" node shim/src/ipc-types.test.js
+
+# 1.5) runtime 核心模块单测（clipboard/ipc/protocol/session/browser-window/app）
+run "runtime 模块单测" node runtime/modules/modules.test.js
+run "preload 运行时单测" node runtime/preload-runtime.test.js
+run "Codec 跨端一致性" node runtime/codec-consistency.test.js
 
 # 2) 门禁状态机（L0/L1/L2/L3）
 run "门禁状态机测试" node pack/gate-flow.test.js
@@ -35,6 +53,9 @@ run "兼容基线自测" node compat/check.js --self-test
 
 # 5) P3-C 更新器自测（含签名校验 + 回滚）
 run "更新器自测" node pack/update.js --self-test
+
+# 5.5) P3-C 签名脚本自测（命令构造正确性）
+run "签名脚本自测" node pack/sign.js --self-test
 
 # 6) P4-E 灰度分桶自测
 if [ -f pack/gray.js ]; then run "灰度分桶自测" node pack/gray.js --self-test; fi

@@ -9,339 +9,23 @@
 //!
 //! 所有 stdout 写入经全局 Mutex 保证 JSONL 行原子性；stderr 用于诊断日志。
 
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 
 mod s4;
+mod util;
 
 use base64::Engine;
 use serde_json::{json, Value};
-use wry::http::{Request as HttpRequest, Response as HttpResponse};
 use tao::{
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
     window::{Fullscreen, WindowBuilder},
 };
+use util::*;
+use wry::http::Request as HttpRequest;
 use wry::{PageLoadEvent, WebView};
-
-/// 主线程消息：Node 命令 / renderer IPC
-enum HostMsg {
-    Command(Value),
-    RendererIpc { win_id: u32, body: String },
-}
-
-/// 全局 stdout 写锁（JSONL 行原子写入）
-type Out = Arc<Mutex<io::Stdout>>;
-
-/// P2-E：剪贴板内存镜像（无头环境兜底，真实 X11 以系统剪贴板为准）
-fn clipboard_store() -> &'static Mutex<String> {
-    static CLIP: std::sync::OnceLock<Mutex<String>> = std::sync::OnceLock::new();
-    CLIP.get_or_init(|| Mutex::new(String::new()))
-}
-
-/// P6-B：代理配置状态（setProxy 真实记录，resolveProxy 按规则回显）
-fn proxy_store() -> &'static Mutex<Option<Value>> {
-    static PROXY: std::sync::OnceLock<Mutex<Option<Value>>> = std::sync::OnceLock::new();
-    PROXY.get_or_init(|| Mutex::new(None))
-}
-
-/// P6-B：拼写检查词表（add/remove 真实持久化到进程内，list 读回）
-fn spellcheck_store() -> &'static Mutex<Vec<String>> {
-    static WORDS: std::sync::OnceLock<Mutex<Vec<String>>> = std::sync::OnceLock::new();
-    WORDS.get_or_init(|| Mutex::new(Vec::new()))
-}
-
-fn emit(out: &Out, msg: &Value) {
-    let mut o = out.lock().unwrap();
-    let _ = writeln!(o, "{}", msg);
-    let _ = o.flush();
-}
-
-fn respond(out: &Out, id: Value, result: Value) {
-    emit(out, &json!({ "id": id, "ok": true, "result": result }));
-}
-
-fn respond_err(out: &Out, id: Value, err: String) {
-    emit(out, &json!({ "id": id, "ok": false, "error": err }));
-}
-
-fn bounds_of(window: &tao::window::Window) -> Value {
-    let size = window.inner_size();
-    let pos = window.outer_position().map(|p| (p.x, p.y)).unwrap_or((0, 0));
-    json!({ "x": pos.0, "y": pos.1, "width": size.width, "height": size.height })
-}
-
-/// P6-A：取原生窗口句柄（数值化，供 getNativeWindowHandle 镜像）
-fn native_handle_of(window: &tao::window::Window) -> Option<u64> {
-    use wry::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let handle = window.window_handle().ok()?;
-    #[cfg(target_os = "linux")]
-    {
-        if let RawWindowHandle::Xlib(h) = handle.as_raw() {
-            return Some(h.window as u64);
-        }
-        if let RawWindowHandle::Wayland(h) = handle.as_raw() {
-            return Some(h.surface.as_ptr() as u64);
-        }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        if let RawWindowHandle::Win32(h) = handle.as_raw() {
-            return Some(h.hwnd.get() as u64);
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if let RawWindowHandle::AppKit(h) = handle.as_raw() {
-            return Some(h.ns_view.as_ptr() as u64);
-        }
-    }
-    let _ = handle;
-    None
-}
-
-/// P6-A：capturePage 实现。Linux/X11 用 ImageMagick `import -window <id>` 截取原生窗口；
-/// 其他平台无简单系统截图路径时返回空 dataURL（由 JS 层 createEmpty 兜底），不静默假装成功。
-fn capture_window(
-    windows: &HashMap<u32, tao::window::Window>,
-    _webviews: &HashMap<u32, wry::WebView>,
-    win_id: u32,
-) -> String {
-    #[cfg(target_os = "linux")]
-    {
-        let Some(w) = windows.get(&win_id) else { return String::new(); };
-        let Some(h) = native_handle_of(w) else { return String::new(); };
-        let tmp = std::env::temp_dir().join(format!("elecmini-cap-{}.png", win_id));
-        let out = std::process::Command::new("import")
-            .args(["-window", &h.to_string(), &tmp.to_string_lossy()])
-            .output();
-        if let Ok(o) = out {
-            if o.status.success() {
-                if let Ok(bytes) = std::fs::read(&tmp) {
-                    let _ = std::fs::remove_file(&tmp);
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    return format!("data:image/png;base64,{}", b64);
-                }
-            }
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = (windows, win_id);
-    }
-    String::new()
-}
-
-/// P2-A：从 tao 读真实显示器信息（screen shim 数据源）
-fn displays_json(
-    elwt: &tao::event_loop::EventLoopWindowTarget<HostMsg>,
-) -> Value {
-    let primary = elwt.primary_monitor();
-    let mut arr = Vec::new();
-    let mut id = 1u32;
-    for m in elwt.available_monitors() {
-        let size = m.size();
-        let pos = m.position();
-        let is_primary = primary.as_ref().map(|p| p == &m).unwrap_or(false);
-        arr.push(json!({
-            "id": id,
-            "bounds": { "x": pos.x, "y": pos.y, "width": size.width, "height": size.height },
-            "workArea": { "x": pos.x, "y": pos.y, "width": size.width, "height": size.height },
-            "scaleFactor": m.scale_factor(),
-            "isPrimary": is_primary,
-            "name": m.name(),
-        }));
-        id += 1;
-    }
-    // 无显示器（如无头）时给一个合理默认，保证 screen API 不返回空
-    if arr.is_empty() {
-        arr.push(json!({
-            "id": 1,
-            "bounds": { "x": 0, "y": 0, "width": 1920, "height": 1080 },
-            "workArea": { "x": 0, "y": 0, "width": 1920, "height": 1040 },
-            "scaleFactor": 1.0, "isPrimary": true, "name": "default",
-        }));
-    }
-    json!({ "displays": arr })
-}
-
-/// P2-A：探测系统主题（nativeTheme shim 数据源）
-fn theme_json() -> Value {
-    #[cfg(target_os = "linux")]
-    let dark = {
-        let color_scheme = std::process::Command::new("gsettings")
-            .args(["get", "org.gnome.desktop.interface", "color-scheme"])
-            .output().ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
-            .unwrap_or_default();
-        let gtk_theme = std::process::Command::new("gsettings")
-            .args(["get", "org.gnome.desktop.interface", "gtk-theme"])
-            .output().ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
-            .unwrap_or_default();
-        color_scheme.contains("dark") || gtk_theme.to_lowercase().contains("dark")
-            || std::env::var("GTK_THEME").map(|v| v.to_lowercase().contains("dark")).unwrap_or(false)
-    };
-    #[cfg(target_os = "macos")]
-    let dark = std::process::Command::new("defaults")
-        .args(["read", "-g", "AppleInterfaceStyle"])
-        .output().ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().eq_ignore_ascii_case("Dark"))
-        .unwrap_or(false);
-    #[cfg(target_os = "windows")]
-    let dark = std::process::Command::new("reg")
-        .args(["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "/v", "AppsUseLightTheme"])
-        .output().ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("0x0"))
-        .unwrap_or(false);
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    let dark = false;
-
-    json!({
-        "shouldUseDarkColors": dark,
-        "shouldUseHighContrastColors": false,
-        "themeSource": "system",
-    })
-}
-
-/// P2-B：自定义协议定义。String = 内存 path→文本；File = 目录根映射。
-/// P6-B：Buffer = 内存 path→base64 二进制；Stream = 文件流式映射（复用 File 语义）。
-#[derive(Clone)]
-enum ProtocolDef {
-    String { routes: HashMap<String, String> },
-    Buffer { routes: HashMap<String, Vec<u8>>, mime: String },
-    File { base_dir: String },
-}
-
-/// 构造 wry 自定义协议响应（http 200 + 内容类型推断）
-fn protocol_response(def: &ProtocolDef, uri_path: &str) -> HttpResponse<Cow<'static, [u8]>> {
-    let (bytes, mime) = match def {
-        ProtocolDef::String { routes } => {
-            let key = uri_path.trim_start_matches('/');
-            let body = routes.get(key)
-                .or_else(|| routes.get(uri_path))
-                .cloned()
-                .unwrap_or_default();
-            (body.into_bytes(), "text/plain; charset=utf-8".to_string())
-        }
-        ProtocolDef::Buffer { routes, mime } => {
-            let key = uri_path.trim_start_matches('/');
-            let body = routes.get(key)
-                .or_else(|| routes.get(uri_path))
-                .cloned()
-                .unwrap_or_default();
-            (body, mime.clone())
-        }
-        ProtocolDef::File { base_dir } => {
-            let rel = uri_path.trim_start_matches('/');
-            let rel = if rel.is_empty() { "index.html" } else { rel };
-            let full = std::path::Path::new(base_dir).join(rel);
-            match std::fs::read(&full) {
-                Ok(b) => {
-                    let ext = full.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    let mime = match ext.as_str() {
-                        "html" | "htm" => "text/html; charset=utf-8",
-                        "js" | "mjs" => "application/javascript; charset=utf-8",
-                        "css" => "text/css; charset=utf-8",
-                        "json" => "application/json; charset=utf-8",
-                        "png" => "image/png", "jpg" | "jpeg" => "image/jpeg",
-                        "svg" => "image/svg+xml", "ico" => "image/x-icon",
-                        _ => "application/octet-stream",
-                    }.to_string();
-                    (b, mime)
-                }
-                Err(_) => (b"Not Found".to_vec(), "text/plain; charset=utf-8".to_string()),
-            }
-        }
-    };
-    HttpResponse::builder()
-        .status(200)
-        .header("Content-Type", mime)
-        .header("Access-Control-Allow-Origin", "*")
-        .body(Cow::Owned(bytes))
-        .unwrap_or_else(|_| HttpResponse::builder().status(500).body(Cow::Owned(Vec::new())).unwrap())
-}
-
-/// 从请求 URI 提取 path（形如 app://local/index.html → /index.html）
-fn request_path(uri: &str) -> String {
-    // 去掉 scheme://authority
-    if let Some(rest) = uri.split_once("://") {
-        if let Some((_, p)) = rest.1.split_once('/') {
-            return format!("/{}", p);
-        }
-        return "/".into();
-    }
-    uri.to_string()
-}
-
-/// P2-C：safeStorage 密钥（从 machine-id 派生，进程内固定）
-fn storage_key() -> String {
-    let mid = std::fs::read_to_string("/etc/machine-id")
-        .or_else(|_| std::fs::read_to_string("/var/lib/dbus/machine-id"))
-        .unwrap_or_else(|_| "elecmini-dev-key".to_string());
-    let raw = format!("elecmini::{}", mid.trim());
-    // 取前 32 字节作为 hex key（SHA256 前 32 hex chars）
-    use std::fmt::Write as _;
-    let mut hex = String::new();
-    for b in raw.as_bytes().iter().cycle().take(32) {
-        let _ = write!(hex, "{:02x}", b);
-    }
-    hex
-}
-
-/// P2-C：AES-256-GCM 加密（openssl CLI，base64 输出）
-fn encrypt_text(plain: &str) -> Result<String, String> {
-    use std::io::Write as _;
-    let key = storage_key();
-    let mut child = std::process::Command::new("openssl")
-        .args(["enc", "-aes-256-cbc", "-pbkdf2", "-base64", "-A", "-pass", &format!("pass:{}", key), "-salt"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().map_err(|e| format!("openssl spawn: {}", e))?;
-    if let Some(stdin) = child.stdin.as_mut() { let _ = stdin.write_all(plain.as_bytes()); }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
-
-fn decrypt_text(data: &str) -> Result<String, String> {
-    use std::io::Write as _;
-    let key = storage_key();
-    let mut child = std::process::Command::new("openssl")
-        .args(["enc", "-d", "-aes-256-cbc", "-pbkdf2", "-base64", "-A", "-pass", &format!("pass:{}", key), "-salt"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn().map_err(|e| format!("openssl spawn: {}", e))?;
-    if let Some(stdin) = child.stdin.as_mut() { let _ = stdin.write_all(data.as_bytes()); }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
-}
-
-/// P2-E：执行系统工具并取 stdout（stdin 可选输入）
-fn run_tool(program: &str, args: &[&str], input: Option<&str>) -> Result<String, String> {
-    use std::io::Write as _;
-    let mut cmd = std::process::Command::new(program);
-    cmd.args(args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    if input.is_some() { cmd.stdin(std::process::Stdio::piped()); }
-    let mut child = cmd.spawn().map_err(|e| format!("{} spawn: {}", program, e))?;
-    if let (Some(inp), Some(stdin)) = (input, child.stdin.as_mut()) { let _ = stdin.write_all(inp.as_bytes()); }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() && program != "zenity" { // zenity 取消时退出码非 0，交给上层解析
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
-}
 
 fn main() {
     let boot_start = std::time::Instant::now();
@@ -362,14 +46,17 @@ fn main() {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             match line {
-                Ok(l) if !l.trim().is_empty() => {
-                    match serde_json::from_str::<Value>(l.trim()) {
-                        Ok(v) => { let _ = proxy_stdin.send_event(HostMsg::Command(v)); }
-                        Err(e) => eprintln!("[HOST] bad JSON from node: {} | {}", e, l.trim()),
+                Ok(l) if !l.trim().is_empty() => match serde_json::from_str::<Value>(l.trim()) {
+                    Ok(v) => {
+                        let _ = proxy_stdin.send_event(HostMsg::Command(v));
                     }
-                }
+                    Err(e) => eprintln!("[HOST] bad JSON from node: {} | {}", e, l.trim()),
+                },
                 Ok(_) => {}
-                Err(e) => { eprintln!("[HOST] stdin read error: {}", e); break; }
+                Err(e) => {
+                    eprintln!("[HOST] stdin read error: {}", e);
+                    break;
+                }
             }
         }
         eprintln!("[HOST] stdin closed (node exited)");
@@ -502,6 +189,30 @@ fn main() {
                                 clipboard_store().lock().unwrap().clone()
                             } else { sys };
                             if !notify { respond(&out, id, json!({ "text": text })); }
+                        }
+                        // P2-E 扩展：富文本（text/html）剪贴板
+                        "shell:writeClipboardHTML" => {
+                            let html = params.get("html").and_then(Value::as_str).unwrap_or("");
+                            use std::io::Write as _;
+                            if let Ok(mut child) = std::process::Command::new("xclip")
+                                .args(["-selection", "clipboard", "-t", "text/html"])
+                                .stdin(std::process::Stdio::piped())
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .spawn()
+                            {
+                                if let Some(stdin) = child.stdin.as_mut() { let _ = stdin.write_all(html.as_bytes()); }
+                                drop(child.stdin.take());
+                            }
+                            clipboard_html_store().lock().unwrap().clone_from(&html.to_string());
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "shell:readClipboardHTML" => {
+                            let sys = run_tool("timeout", &["1", "xclip", "-selection", "clipboard", "-o", "-t", "text/html"], None).unwrap_or_default();
+                            let html = if sys.trim().is_empty() {
+                                clipboard_html_store().lock().unwrap().clone()
+                            } else { sys };
+                            if !notify { respond(&out, id, json!({ "html": html })); }
                         }
                         "dialog:showOpen" | "dialog:showSave" => {
                             let opts = params.get("options").cloned().unwrap_or(json!({}));
@@ -681,6 +392,16 @@ fn main() {
 
                             let p = proxy.clone();
                             let out_page = out.clone();
+                            // SECURITY：每窗口记录「信任锚 origin」与「当前页面 origin」。
+                            //   - 锚：首个外部导航的 origin（之后同 origin 视为受信）
+                            //   - 当前：每次导航更新，IPC 校验时判断当前页面是否受信
+                            let nav_anchor: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                            let nav_current: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+                            let anchor_nav = nav_anchor.clone();
+                            let anchor_ipc = nav_anchor.clone();
+                            let current_nav = nav_current.clone();
+                            let current_ipc = nav_current.clone();
+                            let strict_nav = strict_nav_enabled();
                             let mut builder = wry::WebViewBuilder::new();
                             if !init_script.is_empty() {
                                 builder = builder.with_initialization_script(init_script.clone());
@@ -695,8 +416,40 @@ fn main() {
                                     protocol_response(&d, &request_path(&req.uri().to_string()))
                                 });
                             }
+                            // SECURITY：导航 origin 锚定。更新当前 origin；严格模式下阻断外跳。
+                            builder = builder.with_navigation_handler(move |url: String| {
+                                let origin = url_origin(&url);
+                                if let Some(o) = origin.as_ref() {
+                                    *current_nav.lock().unwrap() = o.clone();
+                                }
+                                let mut anchor = anchor_nav.lock().unwrap();
+                                let allowed = match origin.as_ref() {
+                                    None => false,
+                                    Some(o) if is_trusted_origin(o) => true, // 本地/内部/特殊：放行且不锚定
+                                    Some(o) => match anchor.as_ref() {
+                                        Some(a) if a == o => true,          // 与锚定同 origin
+                                        None => { *anchor = Some(o.clone()); true } // 首次外部导航：锚定
+                                        _ => false,                          // 其他外部 origin：不可信
+                                    },
+                                };
+                                if !allowed {
+                                    eprintln!("[SECURITY] navigation blocked (untrusted origin): {} (anchor={:?})", url, *anchor);
+                                }
+                                // 非严格模式不阻断导航（避免破坏 SPA），但 current 已更新，
+                                // 后续该页面的 IPC 会被 ipc handler 丢弃。
+                                if strict_nav { allowed } else { true }
+                            });
                             let webview = builder
                                 .with_ipc_handler(move |req: wry::http::Request<String>| {
+                                    // SECURITY：仅受信页面（本地/内部/特殊或与锚定同 origin）可调 IPC。
+                                    let cur = current_ipc.lock().unwrap().clone();
+                                    let trusted = cur.is_empty()
+                                        || is_trusted_origin(&cur)
+                                        || anchor_ipc.lock().unwrap().as_deref() == Some(cur.as_str());
+                                    if !trusted {
+                                        eprintln!("[SECURITY] dropped IPC from untrusted origin: {}", cur);
+                                        return;
+                                    }
                                     let _ = p.send_event(HostMsg::RendererIpc {
                                         win_id,
                                         body: req.body().clone(),
@@ -880,7 +633,7 @@ fn main() {
                                     let cb_id = id.clone();
                                     match wv.evaluate_script_with_callback(code, move |raw: String| {
                                         let value = serde_json::from_str::<Value>(&raw)
-                                            .unwrap_or_else(|_| Value::String(raw));
+                                            .unwrap_or(Value::String(raw));
                                         // 闭包为 Fn（非 FnOnce），id 需 clone 后交给 respond
                                         respond(&cb_out, cb_id.clone(), json!({ "ok": true, "value": value }));
                                     }) {

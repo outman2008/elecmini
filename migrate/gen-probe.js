@@ -88,7 +88,7 @@ lines.push("  win.loadURL('data:text/html,<html><body>probe</body></html>');");
 lines.push("  win.webContents.on('did-finish-load', () => {");
 lines.push("    win.webContents.executeJavaScript('1 + 1').then(v => {");
 lines.push("      check('__execJS', () => v);");
-lines.push("      setTimeout(() => { flush(); app.quit(); }, 150);");
+lines.push("      flush(); app.quit();"); // 事件驱动：execJS 回调后立即落盘退出，去掉固定延迟
 lines.push("    }).catch(e => { check('__execJS.error', () => String(e)); flush(); app.quit(); });");
 lines.push("  });");
 lines.push("});");

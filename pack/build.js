@@ -162,8 +162,38 @@ function buildSku(sku, target, outDir, nodeBin, dryRun) {
   return { sku, target, dir: skuDir, manifest };
 }
 
+/** 产物自检：manifest 完整 + 每文件 sha256 一致 + 必需入口存在 */
+function verifyBuild(skuDir) {
+  const manifestPath = path.join(skuDir, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) return { ok: false, problems: ['missing manifest.json'] };
+  const m = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const problems = [];
+  for (const f of m.files) {
+    const p = path.join(skuDir, f.path);
+    if (!fs.existsSync(p)) { problems.push(`missing: ${f.path}`); continue; }
+    if (sha256(p) !== f.sha256) problems.push(`hash mismatch: ${f.path}`);
+  }
+  for (const req of ['launcher.js', 'runtime/launcher.js', 'bin/node']) {
+    if (!fs.existsSync(path.join(skuDir, req)) && !fs.existsSync(path.join(skuDir, req + '.exe'))) {
+      problems.push(`missing entry: ${req}`);
+    }
+  }
+  return { ok: problems.length === 0, problems, files: m.files.length };
+}
+
 function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // 产物自检模式
+  const vi = argv.indexOf('--verify');
+  if (vi >= 0) {
+    const dir = argv[vi + 1];
+    if (!dir) { console.error('用法：node pack/build.js --verify <skuDir>'); process.exit(2); }
+    const r = verifyBuild(path.resolve(ROOT, dir));
+    console.log(`[BUILD-VERIFY] ${r.ok ? '通过' : '失败'}（${r.files || 0} files）${r.problems.length ? '：' + r.problems.join('; ') : ''}`);
+    process.exit(r.ok ? 0 : 1);
+  }
+
+  const args = parseArgs(argv);
   ensureLauncherTemplate();
   const nodeBin = resolveNode(args.nodeBin);
   const outDir = path.resolve(ROOT, args.out);
@@ -183,4 +213,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { buildSku, planLayout, parseArgs };
+module.exports = { buildSku, planLayout, parseArgs, verifyBuild };
