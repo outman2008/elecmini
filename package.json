@@ -33,6 +33,8 @@
     "assets/",
     "README.md",
     "README.en.md",
+    "llms.txt",
+    "AGENTS.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",

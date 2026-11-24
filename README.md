@@ -17,7 +17,7 @@
 
 ---
 
-## ElecMini 是什么
+## ElecMini 是什么？它解决什么问题？
 
 ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代码继续 `require('electron')`，底层由 **Rust 宿主（tao 窗口 + wry WebView）+ Node sidecar** 承载，渲染改用**系统 WebView**（WebView2 / WKWebView / WebKitGTK），不再随应用分发 Chromium。
 
@@ -35,7 +35,7 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 - **打包与分发**：Slim / Full 双 SKU、代码签名、自动更新（含验签与回滚）、灰度分桶。
 - **安全加固**：host 侧导航 origin 锚定 + IPC 来源校验，可选 `ELECMINI_STRICT_NAV=1` 严格阻断异源导航。
 
-## 与 Electron / Tauri 的对比
+## 和 Electron / Tauri 相比该怎么选？
 
 | 维度 | Electron | Tauri | ElecMini |
 |---|---|---|---|
@@ -98,7 +98,7 @@ npx elecmini check             # 全量（Linux 需 xvfb-run）
 > 演示为真实 autotest 的终端输出（门禁 L0 → host ready → `ipcRenderer.invoke('ping')` → `PING_RESULT` → 类型封装往返 → 退出）。
 > 因无头 CI 环境无法抓取 WebKitGTK 窗口画面，此处以终端实测输出呈现，所有行均来自实际运行日志。
 
-## API 支持分级
+## API 支持分哪几档？
 
 表面覆盖 ≠ 语义完整。Electron 45.4.1 官方类型定义共 **984 个成员**（50 个导出）。
 ElecMini 对其中**核心 20 个模块**的成员做了逐项语义分级，共 525 项：
@@ -125,7 +125,7 @@ ElecMini 对其中**核心 20 个模块**的成员做了逐项语义分级，共
 > 差分的 42 个用例中有 17 个依赖真实窗口 / 屏幕 / session，**必须在有显示环境**下运行
 > （Linux 用 `xvfb-run`，Windows 为真机桌面）；无显示环境下这些用例不写盘，实际只比对 25 个。
 
-## 已知边界
+## 有哪些已知边界和限制？
 
 - **无 Electron 级 contextIsolation**：preload 与页面同 realm；隔离依赖 host 侧 origin 锚定 + IPC 来源校验。**不要**把它当作安全沙箱使用。
 - **同步 API 降级**：`sendSync` 返回 `undefined`、`showMessageBoxSync` 返回 `defaultId` 等——类型正确但不是真实交互结果，需改写为异步。

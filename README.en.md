@@ -17,7 +17,7 @@
 
 ---
 
-## What is ElecMini
+## What is ElecMini and what problem does it solve?
 
 ElecMini is **not** a fork of Electron. It is a **compatibility layer**: your business code keeps calling `require('electron')`, while underneath a **Rust host (tao windows + wry WebView) plus a Node sidecar** takes over, rendering through the **system WebView** (WebView2 / WKWebView / WebKitGTK) instead of shipping Chromium with your app.
 
@@ -35,7 +35,7 @@ It solves a specific problem: you want a **smaller installer, faster cold start,
 - **Packaging & distribution**: Slim / Full SKUs, code signing, auto-update (with signature verification and rollback), canary bucketing.
 - **Security hardening**: host-side navigation origin anchoring + IPC source validation, with optional `ELECMINI_STRICT_NAV=1` strict cross-origin blocking.
 
-## Comparison: Electron vs Tauri vs ElecMini
+## How does ElecMini compare with Electron and Tauri?
 
 | Dimension | Electron | Tauri | ElecMini |
 |---|---|---|---|
@@ -98,7 +98,7 @@ npx elecmini check             # full (needs xvfb-run on Linux)
 > The demo is real autotest terminal output (gate L0 → host ready → `ipcRenderer.invoke('ping')` → `PING_RESULT` → typed round-trip → quit).
 > The headless CI environment cannot capture the WebKitGTK window surface, so the demo uses measured terminal output; every line comes from an actual run.
 
-## API support tiers
+## Which API support tiers exist?
 
 Surface coverage ≠ semantic completeness. Electron 45.4.1 official type definitions contain **984 members** (50 exports). ElecMini grades the members of the **core 20 modules** semantically — 525 items in total:
 
@@ -124,7 +124,7 @@ Tiers are generated live by `node migrate/api-surface/audit.js`; the full unsupp
 > 17 of the 42 differential cases depend on a real window / screen / session and **must run in a display environment**
 > (Linux: `xvfb-run`; Windows: real desktop). Without a display they are not written, so only 25 cases are compared.
 
-## Known limits
+## What are the known limits and boundaries?
 
 - **No Electron-grade contextIsolation**: preload and page share the same realm; isolation relies on host-side origin anchoring + IPC source validation. **Do not** treat it as a security sandbox.
 - **Sync API degradation**: `sendSync` returns `undefined`, `showMessageBoxSync` returns `defaultId`, etc. — type-correct but not real interaction results; rewrite to async.

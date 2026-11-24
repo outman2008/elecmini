@@ -1,0 +1,34 @@
+# ElecMini
+
+> Keep the Electron JS API contract, drop the bundled Chromium, and render with the system WebView (WebView2 / WKWebView / WebKitGTK). A low-cost migration path for existing Electron apps: business code keeps `require('electron')` while the runtime is a Rust host (tao + wry) plus a Node sidecar.
+
+ElecMini is not an Electron fork. It is a compatibility layer that lets an existing Electron application run on the system WebView instead of shipping Chromium. The trade-off: large wins in package size and cold start, no memory win, and a documented set of unsupported/degraded APIs.
+
+## Key facts
+
+- Package size: ~2.3 MB runtime code (npm tarball ~150 KB + Rust host ~1.9 MB) vs Electron's ~274 MB bundled engine (~118x smaller engine footprint). System WebView is a shared OS dependency, not bundled.
+- API surface: 100% of official `electron.d.ts` members are classified as native / mirrored / degraded.
+- Verification: full CI 23/23, differential contract 42/42, Codec consistency 10/10.
+- Platforms: Windows (WebView2), macOS (WKWebView), Linux (WebKitGTK).
+- Known boundaries: no true `contextIsolation`; APIs requiring Chromium internals are unsupported or degraded.
+
+## Canonical documentation
+
+- [README (Chinese)](https://github.com/outman2008/elecmini/blob/main/README.md) — overview, features, comparison, quick start, API tiers, platforms, boundaries.
+- [README (English)](https://github.com/outman2008/elecmini/blob/main/README.en.md) — English equivalent.
+- [Unsupported / degraded APIs](https://github.com/outman2008/elecmini/blob/main/docs/unsupported-apis.md) — authoritative list of what does not work and why.
+- [Migration manual](https://github.com/outman2008/elecmini/blob/main/migrate/README.md) — the 4-step Go/No-Go evaluation workflow for real apps.
+- [Real-project migration examples](https://github.com/outman2008/elecmini/tree/main/migrate/full-app) — electron-api-demos full-UI adapter plus three real-project API probes.
+- [CLI and examples](https://github.com/outman2008/elecmini/tree/main/examples/minimal) — minimal runnable app.
+
+## When to use ElecMini
+
+- You have an existing Electron app and want a smaller, faster distribution without a full rewrite.
+- Your app's Electron API usage falls in the native/mirrored tiers, or you can accept documented degradations.
+- You can rely on a supported system WebView being present on target machines (L0 gate).
+
+## When NOT to use ElecMini
+
+- You are building a new app from scratch — prefer Tauri (Rust main process) or Electron directly.
+- Your app depends on Chromium-internal APIs, true `contextIsolation`, or memory parity with Electron.
+- You cannot guarantee system WebView availability on target machines.
