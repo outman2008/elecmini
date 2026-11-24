@@ -123,9 +123,15 @@ md.push('');
 if (blocking.length) {
   md.push('## ❌/⚠️ 阻断调用点（需业务方逐项确认）');
   md.push('');
-  md.push('| 文件 | 行 | 模块 | 方法 | 状态 |');
-  md.push('|---|---|---|---|---|');
-  blocking.forEach(f => md.push(`| ${f.file} | ${f.line} | ${f.module} | ${f.method} | ${f.status} |`));
+  md.push('| 文件 | 行 | 模块 | 调用/选项 | 状态 | 说明 |');
+  md.push('|---|---|---|---|---|---|');
+  blocking.forEach(f => {
+    const symbol = f.method ? `${f.module}.${f.method}` : (f.option ? `${f.module}.${f.option}` : f.module);
+    const note = f.option === 'nodeIntegration'
+      ? '渲染层直接持 Node 权限；ElecMini 需改为 preload + contextBridge（需改造业务代码）'
+      : (f.value !== undefined ? `值=${f.value}` : '需业务方确认替代方案或放弃');
+    md.push(`| ${f.file} | ${f.line} | ${f.module} | ${symbol} | ${f.status} | ${note} |`);
+  });
   md.push('');
 }
 md.push('## 下一步');

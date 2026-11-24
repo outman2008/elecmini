@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  app, BrowserWindow, ipcMain, dialog, shell, Menu, screen, nativeImage,
+  app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu, screen, nativeImage,
   nativeTheme, safeStorage, protocol, globalShortcut, powerMonitor,
   systemPreferences, session, Tray,
 } = require('electron');
@@ -41,6 +41,9 @@ check('ipcMain.on_type', () => typeof ipcMain.on);
 check('dialog.showOpenDialog_type', () => typeof dialog.showOpenDialog);
 check('dialog.showOpenDialogSync_type', () => typeof dialog.showOpenDialogSync);
 check('shell.openExternal_type', () => typeof shell.openExternal);
+// 2026-11-24 迁移验证补：clipboard 曾文档声称✅但实际未导出，类型签名用例确保模块存在
+check('clipboard.readText_type', () => typeof clipboard.readText);
+check('clipboard.writeText_type', () => typeof clipboard.writeText);
 check('BrowserWindow_type', () => typeof BrowserWindow);
 
 // ---- P2 模块契约：API 签名/形状（两边都必须一致；平台相关的行为值不作比对）----

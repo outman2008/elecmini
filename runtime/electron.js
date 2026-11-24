@@ -11,6 +11,7 @@ const { BrowserWindow } = require('./modules/browser-window');
 const { ipcMain, ipcRenderer, contextBridge } = require('./modules/ipc');
 const { dialog } = require('./modules/dialog');
 const { shell } = require('./modules/shell');
+const { clipboard } = require('./modules/clipboard');
 const { Menu, MenuItem } = require('./modules/menu');
 const { screen } = require('./modules/screen');
 const { nativeTheme, bindThemeEvents } = require('./modules/native-theme');
@@ -47,6 +48,7 @@ module.exports = {
   contextBridge,
   dialog,
   shell,
+  clipboard,
   Menu,
   MenuItem,
   screen,

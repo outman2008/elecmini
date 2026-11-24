@@ -23,8 +23,10 @@ const outFile = arg('--out', null);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'out', 'coverage']);
 
 // ---------- 兼容性判定表（来自文档 5.1/5.2）----------
+// ⚠️ 本表须与 runtime/electron.js 的实际导出保持一致（2026-11-24 迁移验证发现
+// clipboard/Notification 曾误标 ✅：clipboard 后端有但入口未导出，Notification 完全没实现）。
 const STATUS = {
-  app: '✅', ipcMain: '✅', clipboard: '✅', Notification: '✅',
+  app: '✅', ipcMain: '✅', clipboard: '✅', Notification: '❌',
   BrowserWindow: '🟡', webContents: '🟡', ipcRenderer: '🟡', dialog: '🟡',
   shell: '🟡', Menu: '🟡', MenuItem: '🟡', screen: '🟡', nativeTheme: '🟡',
   nativeImage: '🟡', contextBridge: '🟡', net: '🟡',
