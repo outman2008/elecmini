@@ -133,6 +133,8 @@ if [ "$QUICK" -eq 0 ]; then
     run "P1 主流程 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js tests/p1 2>&1 | grep -q PING_RESULT'
     # 11) P2 全模块 E2E
     run "P2 全模块 E2E" bash -c 'ELECMINI_AUTOTEST=1 timeout 30 xvfb-run -a node runtime/launcher.js tests/p2 2>&1 | grep -q safeStorage'
+    # 11b) 跨平台 DevTools 能力（Linux 走 WebKitWebInspector）
+    run "DevTools 能力(跨平台)" bash -c 'timeout 40 xvfb-run -a node contract/devtools-check.js 2>&1 | tail -2; test ${PIPESTATUS[0]} -eq 0'
   elif [ "$IS_WINDOWS" -eq 1 ]; then
     # Windows 原生桌面 + WebView2：不需要 xvfb，真机跑全部 E2E
     run "门禁真机探测(L0)" node -e 'const p=require("./runtime/gate").probe(); if(p.level!=="L0"){console.error(p);process.exit(1)} console.log(p)'
@@ -145,6 +147,7 @@ if [ "$QUICK" -eq 0 ]; then
     run "P1 主流程 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 timeout 45 node runtime/launcher.js tests/p1 2>&1 | grep -q PING_RESULT'
     run "P2 全模块 E2E(Windows)" bash -c 'ELECMINI_AUTOTEST=1 ELECMINI_TEST_FILE=/tmp/p2-file.txt timeout 45 node runtime/launcher.js tests/p2 2>&1 | grep -q safeStorage'
     run "S4 WebView2 能力(请求拦截/CDP/DevTools)" node contract/s4-check.js
+    run "DevTools 能力(跨平台)" node contract/devtools-check.js
     run "Windows 安全加固+平台降级" node contract/win-check.js
   else
     echo "[SKIP] E2E/差分契约：无 xvfb-run（非 Windows 平台）"

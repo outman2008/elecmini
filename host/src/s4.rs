@@ -1,12 +1,15 @@
-//! S4 — Windows WebView2 专属能力（WebResourceRequested / CDP / DevTools）
+//! S4 — 增强调试与请求能力（WebResourceRequested / CDP / DevTools）
 //!
-//! 跨平台 host 的能力探测与降级层。Windows 上直接调用 WebView2 COM：
+//! 能力按平台分层，绝不静默假装成功：
 //!
-//! - `AddWebResourceRequestedFilter` + `add_WebResourceRequested`：改请求头
-//! - `CallDevToolsProtocolMethod` / `GetDevToolsProtocolEventReceiver`：CDP 命令与事件
-//! - `OpenDevToolsWindow`：打开 Chromium DevTools
+//! | 能力 | Windows (WebView2) | macOS (WKWebView) | Linux (WebKitGTK) |
+//! |---|---|---|---|
+//! | WebResourceRequested 改请求头 | 原生 COM | 降级 | 降级 |
+//! | CDP 命令/事件 | 原生 COM | 无 CDP 协议 | 无 CDP 协议 |
+//! | DevTools 调试窗口 | OpenDevToolsWindow | wry 私有 API | WebKitWebInspector.show() |
 //!
-//! 其他平台返回明确 unsupported，不静默假装成功。
+//! CDP 是 Chromium 私有协议，WebKit 生态（WKWebView/WebKitGTK）没有等价的 CDP 实现，
+//! 它们使用 Web Inspector Protocol。调试窗口能力则由 wry 跨平台提供，三平台均可用。
 
 use serde_json::{json, Value};
 use std::io;
@@ -97,14 +100,36 @@ pub fn capabilities() -> Value {
             "webview2Version": version,
         })
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(target_os = "linux", not(target_os = "windows")))]
+    {
+        json!({
+            "platform": "linux",
+            "webResourceRequested": false,
+            "cdp": false,
+            "devtools": true,
+            "devtoolsBackend": "webkit-web-inspector",
+            "cdpAlternative": "WebKit Inspector Protocol（WEBKIT_INSPECTOR_SERVER 或右键 Inspect Element）",
+        })
+    }
+    #[cfg(target_os = "macos")]
+    {
+        json!({
+            "platform": "macos",
+            "webResourceRequested": false,
+            "cdp": false,
+            "devtools": true,
+            "devtoolsBackend": "wkwebview-private-api",
+            "cdpAlternative": "Safari Web Inspector（Develop 菜单，需 isInspectable）",
+        })
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         json!({
             "platform": std::env::consts::OS,
             "webResourceRequested": false,
             "cdp": false,
             "devtools": false,
-            "reason": "S4 仅 Windows WebView2 可用（其他平台需走降级路径）",
+            "reason": "该平台无已知调试后端",
         })
     }
 }
@@ -344,7 +369,10 @@ pub fn cdp_subscribe(
     Err("CDP 事件仅 Windows WebView2 可用".into())
 }
 
-/// 打开 DevTools（调试构建或显式启用时调用）
+/// 打开 DevTools —— 三平台均可用（后端不同）。
+///
+/// Windows 直接用 WebView2 COM；macOS/Linux 由 wry 封装的 Web Inspector 实现
+/// （详见各平台 wry::WebView::open_devtools）。需启用 wry `devtools` feature 以覆盖 release 构建。
 #[cfg(target_os = "windows")]
 pub fn open_devtools(webview: &wry::WebView) -> Result<(), String> {
     let wv = core_webview(webview)?;
@@ -352,6 +380,30 @@ pub fn open_devtools(webview: &wry::WebView) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn open_devtools(_webview: &wry::WebView) -> Result<(), String> {
-    Err("DevTools 仅 Windows WebView2 可用".into())
+pub fn open_devtools(webview: &wry::WebView) -> Result<(), String> {
+    webview.open_devtools();
+    Ok(())
+}
+
+/// 关闭 DevTools。Windows WebView2 无独立关闭 API（由用户关闭窗口）。
+#[cfg(target_os = "windows")]
+pub fn close_devtools(_webview: &wry::WebView) -> Result<(), String> {
+    Err("WebView2 DevTools 需用户手动关闭".into())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn close_devtools(webview: &wry::WebView) -> Result<(), String> {
+    webview.close_devtools();
+    Ok(())
+}
+
+/// 查询 DevTools 是否打开。Windows WebView2 无可靠状态 API，恒为 unknown。
+#[cfg(target_os = "windows")]
+pub fn is_devtools_open(_webview: &wry::WebView) -> bool {
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn is_devtools_open(webview: &wry::WebView) -> bool {
+    webview.is_devtools_open()
 }

@@ -34,17 +34,28 @@ class DebuggerShim extends EventEmitter {
       if (!p) return;
       this._pending.delete(msg.id);
       clearTimeout(p.timer);
-      if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error || 'CDP error'));
+      if (msg.ok) p.resolve(msg.result);
+      else p.reject(new Error(msg.error || 'CDP error'));
     });
     rpc.on('cdp:event', (msg) => {
       if (msg.winId === this.id) this.emit('message', { sender: this }, msg.eventName, msg.params);
     });
   }
-  attach() { this._attached = true; return Promise.resolve(); }
-  detach() { this._attached = false; return Promise.resolve(); }
-  isAttached() { return this._attached; }
+  attach() {
+    this._attached = true;
+    return Promise.resolve();
+  }
+  detach() {
+    this._attached = false;
+    return Promise.resolve();
+  }
+  isAttached() {
+    return this._attached;
+  }
   /** ElecMini 扩展：订阅 WebView2 CDP 事件（结果经 'message' 事件投递） */
-  subscribeEvent(eventName) { return this._rpc.call('cdp:subscribe', { winId: this.id, eventName }); }
+  subscribeEvent(eventName) {
+    return this._rpc.call('cdp:subscribe', { winId: this.id, eventName });
+  }
   sendCommand(method, params = {}) {
     const id = this._seq++;
     return new Promise((resolve, reject) => {
@@ -53,14 +64,13 @@ class DebuggerShim extends EventEmitter {
         reject(new Error(`CDP timeout: ${method}`));
       }, 8000);
       this._pending.set(id, { resolve, reject, timer });
-      this._rpc.call('cdp:sendCommand', { winId: this.id, id, method, params })
-        .catch((e) => {
-          const p = this._pending.get(id);
-          if (!p) return;
-          this._pending.delete(id);
-          clearTimeout(p.timer);
-          reject(e);
-        });
+      this._rpc.call('cdp:sendCommand', { winId: this.id, id, method, params }).catch((e) => {
+        const p = this._pending.get(id);
+        if (!p) return;
+        this._pending.delete(id);
+        clearTimeout(p.timer);
+        reject(e);
+      });
     });
   }
 }
@@ -77,15 +87,22 @@ class WebContentsShim extends EventEmitter {
     store.onWC(winId, 'did-resize', (p) => this.emit('did-resize', p));
   }
 
-  getURL() { return this._store.getWindow(this.id)?.url || ''; }
-  getTitle() { return this._store.getWindow(this.id)?.title || ''; }
-  isLoading() { return false; } // 降级：镜像未跟踪 loading 阶段
+  getURL() {
+    return this._store.getWindow(this.id)?.url || '';
+  }
+  getTitle() {
+    return this._store.getWindow(this.id)?.title || '';
+  }
+  isLoading() {
+    return false;
+  } // 降级：镜像未跟踪 loading 阶段
 
   /** 向 renderer 发送 IPC（经 host evaluate_script） */
   send(channel, ...args) {
     const codec = require('../codec');
     this._rpc.notify('web:send', {
-      winId: this.id, channel,
+      winId: this.id,
+      channel,
       payload: codec.encode(args.length === 1 ? args[0] : args),
     });
   }
@@ -102,8 +119,21 @@ class WebContentsShim extends EventEmitter {
     });
   }
 
-  openDevTools() { return this._rpc.call('web:openDevTools', { winId: this.id }); }
-  closeDevTools() { return this._rpc.call('web:closeDevTools', { winId: this.id }); }
+  /**
+   * DevTools —— 三平台可用，后端不同：
+   * Windows WebView2 / macOS WKWebView 私有 API / Linux WebKitWebInspector。
+   * Electron 语义：openDevTools/closeDevTools 无返回值（这里返回结构化结果便于探测）。
+   */
+  openDevTools() {
+    return this._rpc.call('web:openDevTools', { winId: this.id });
+  }
+  closeDevTools() {
+    return this._rpc.call('web:closeDevTools', { winId: this.id });
+  }
+  /** ElecMini 扩展：查询 DevTools 当前是否打开 */
+  isDevToolsOpen() {
+    return this._rpc.call('web:isDevToolsOpen', { winId: this.id }).then((r) => !!(r && r.open));
+  }
 
   /**
    * P6-A：capturePage — Electron 语义 Promise<NativeImage>。
@@ -125,9 +155,14 @@ function defineWindowProps(cls) {
   const mirror = (name, method) => {
     if (!(name in p)) {
       Object.defineProperty(p, name, {
-        configurable: true, enumerable: true,
-        get() { return this[method](); },
-        set(v) { this[method.replace(/^is/, 'set')](v); },
+        configurable: true,
+        enumerable: true,
+        get() {
+          return this[method]();
+        },
+        set(v) {
+          this[method.replace(/^is/, 'set')](v);
+        },
       });
     }
   };
@@ -152,8 +187,10 @@ class BrowserWindow extends EventEmitter {
 
     // 同步构造状态镜像：opts 尺寸即窗口意图真实值
     const bounds = {
-      x: opts.x || 0, y: opts.y || 0,
-      width: opts.width || 900, height: opts.height || 640,
+      x: opts.x || 0,
+      y: opts.y || 0,
+      width: opts.width || 900,
+      height: opts.height || 640,
     };
     store.registerWindow(winId, {
       bounds,
@@ -165,8 +202,10 @@ class BrowserWindow extends EventEmitter {
     // 异步命令 host 创建真实窗口（响应里的真实 bounds 会经 window:event 回推）
     rpc.notify('window:create', {
       winId,
-      width: bounds.width, height: bounds.height,
-      x: bounds.x, y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
       title: opts.title || '',
       preload: wp.preload || null,
     });
@@ -187,32 +226,57 @@ class BrowserWindow extends EventEmitter {
   }
 
   // ---- 同步 API（读状态镜像） ----
-  getBounds() { return { ...this._store.getWindow(this._winId)?.bounds }; }
-  getSize() { const b = this.getBounds(); return [b.width, b.height]; }
-  getPosition() { const b = this.getBounds(); return [b.x, b.y]; }
-  getTitle() { return this._store.getWindow(this._winId)?.title || ''; }
-  isClosed() { const w = this._store.getWindow(this._winId); return !w || w.closed; }
-  isDestroyed() { return this.isClosed(); } // Electron 标准方法名
-  isFocused() { return !!this._focused; }
+  getBounds() {
+    return { ...this._store.getWindow(this._winId)?.bounds };
+  }
+  getSize() {
+    const b = this.getBounds();
+    return [b.width, b.height];
+  }
+  getPosition() {
+    const b = this.getBounds();
+    return [b.x, b.y];
+  }
+  getTitle() {
+    return this._store.getWindow(this._winId)?.title || '';
+  }
+  isClosed() {
+    const w = this._store.getWindow(this._winId);
+    return !w || w.closed;
+  }
+  isDestroyed() {
+    return this.isClosed();
+  } // Electron 标准方法名
+  isFocused() {
+    return !!this._focused;
+  }
 
   // ---- P6-A：全屏系列（tao 原生 set_fullscreen，真实 RPC） ----
-  isFullScreen() { return this._fullScreen; }
+  isFullScreen() {
+    return this._fullScreen;
+  }
   setFullScreen(flag) {
     this._fullScreen = !!flag;
     return this._rpc.call('window:setFullScreen', { winId: this._winId, flag: !!flag });
   }
-  isFullScreenable() { return this._fullScreenable; }
+  isFullScreenable() {
+    return this._fullScreenable;
+  }
   setFullScreenable(flag) {
     this._fullScreenable = !!flag;
     return this._rpc.call('window:setFullScreenable', { winId: this._winId, flag: !!flag });
   }
-  isSimpleFullScreen() { return this._simpleFullScreen; }
+  isSimpleFullScreen() {
+    return this._simpleFullScreen;
+  }
   setSimpleFullScreen(flag) {
     this._simpleFullScreen = !!flag;
     // tao 无独立 simple-fullscreen 语义，映射为全屏（记录为语义降级）
     return this._rpc.call('window:setFullScreen', { winId: this._winId, flag: !!flag });
   }
-  isKiosk() { return this._kiosk; }
+  isKiosk() {
+    return this._kiosk;
+  }
   setKiosk(flag) {
     this._kiosk = !!flag;
     return this._rpc.call('window:setKiosk', { winId: this._winId, flag: !!flag });
@@ -223,10 +287,14 @@ class BrowserWindow extends EventEmitter {
     return typeof h === 'number' ? h : null;
   }
   /** P6-A：capturePage 别名 — Electron 契约列于 BrowserWindow，委派给 webContents */
-  capturePage() { return this.webContents.capturePage(); }
+  capturePage() {
+    return this.webContents.capturePage();
+  }
 
   // ---- 异步命令 ----
-  loadURL(url) { return this._rpc.call('window:loadUrl', { winId: this._winId, url }); }
+  loadURL(url) {
+    return this._rpc.call('window:loadUrl', { winId: this._winId, url });
+  }
   loadFile(file) {
     // 映射到本地 HTTP server（规避 wry file:// IPC bug），路径取相对 appDir 部分
     const c = ctx.get();
@@ -238,17 +306,36 @@ class BrowserWindow extends EventEmitter {
     this._store.getWindow(this._winId).title = t;
     return this._rpc.call('window:setTitle', { winId: this._winId, title: t });
   }
-  setSize(w, h) { return this._rpc.call('window:setSize', { winId: this._winId, width: w, height: h }); }
-  show() { return this._rpc.call('window:show', { winId: this._winId }); }
-  focus() { this._focused = true; return this._rpc.call('window:focus', { winId: this._winId }); }
-  close() { return this._rpc.call('window:close', { winId: this._winId }); }
-  destroy() { return this.close(); }
-  hide() { return this._rpc.call('window:hide', { winId: this._winId }); }
-  maximize() { return this._rpc.call('window:maximize', { winId: this._winId }); }
-  minimize() { return this._rpc.call('window:minimize', { winId: this._winId }); }
+  setSize(w, h) {
+    return this._rpc.call('window:setSize', { winId: this._winId, width: w, height: h });
+  }
+  show() {
+    return this._rpc.call('window:show', { winId: this._winId });
+  }
+  focus() {
+    this._focused = true;
+    return this._rpc.call('window:focus', { winId: this._winId });
+  }
+  close() {
+    return this._rpc.call('window:close', { winId: this._winId });
+  }
+  destroy() {
+    return this.close();
+  }
+  hide() {
+    return this._rpc.call('window:hide', { winId: this._winId });
+  }
+  maximize() {
+    return this._rpc.call('window:maximize', { winId: this._winId });
+  }
+  minimize() {
+    return this._rpc.call('window:minimize', { winId: this._winId });
+  }
 
   /** 供契约测试/调试：等待 host 完成创建 */
-  whenCreated() { return this._rpc.call('window:ensure', { winId: this._winId }); }
+  whenCreated() {
+    return this._rpc.call('window:ensure', { winId: this._winId });
+  }
 }
 
 // 静态工厂（Electron 里 BrowserWindow.getAllWindows 等）

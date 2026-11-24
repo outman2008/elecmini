@@ -36,7 +36,7 @@ The motivation: I had Electron apps I didn't want to rewrite, but shipping ~224 
 - **It does not reduce memory.** Measured PSS is ~107% of Electron. The system WebView engine is still a fixed cost; the ~240 MB "engine tax" isn't eliminated. If your goal is lower RAM, this isn't it.
 - **No Electron-grade `contextIsolation`** — preload and page share a realm. Don't treat it as a security sandbox.
 - Sync APIs are type-correct degraded stubs (`sendSync` → `undefined`), not real interactions. Chromium extensions and `@electron/remote` are unsupported.
-- CDP/DevTools only on Windows WebView2. L0 ≥95% Go/No-Go still needs production telemetry.
+- CDP command protocol is Windows WebView2 only; the DevTools inspector window works on all three platforms (Web Inspector backend on macOS/Linux). L0 ≥95% Go/No-Go still needs production telemetry.
 
 Repo, quick start, and the honest comparison table are here: https://github.com/outman2008/elecmini
 

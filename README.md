@@ -116,11 +116,13 @@ ElecMini 对其中**核心 20 个模块**的成员做了逐项语义分级，共
 
 ## 平台支持
 
-| 平台 | WebView | 编译 | E2E 验证 |
-|---|---|---|---|
-| Windows | WebView2 | ✅ | ✅ 真机全套（安全加固 22/22、差分契约 42/42） |
-| macOS | WKWebView | ✅ | CI 编译 + 单测；运行时需 macOS 机器 |
-| Linux | WebKitGTK | ✅ | ✅ 全量（差分 42/42、E2E；需 `xvfb-run`） |
+| 平台 | WebView | 编译 | DevTools 后端 | E2E 验证 |
+|---|---|---|---|---|
+| Windows | WebView2 | ✅ | WebView2 CDP（含命令协议） | ✅ 真机全套（安全加固 22/22、差分契约 42/42） |
+| macOS | WKWebView | ✅ | WKWebView 私有 API | CI 编译 + 单测；运行时需 macOS 机器 |
+| Linux | WebKitGTK | ✅ | WebKitWebInspector | ✅ 全量（差分 42/42、E2E；需 `xvfb-run`） |
+
+> **CDP 命令协议**（`webContents.debugger.sendCommand`）仅 Windows 原生支持——CDP 是 Chromium 私有协议，WebKit 无等价协议。DevTools 检查器窗口三平台均可用（macOS 用私有 API，故 release 构建显式启用 wry `devtools` feature；上架 App Store 时需评估私有 API 合规）。
 
 > 差分的 42 个用例中有 17 个依赖真实窗口 / 屏幕 / session，**必须在有显示环境**下运行
 > （Linux 用 `xvfb-run`，Windows 为真机桌面）；无显示环境下这些用例不写盘，实际只比对 25 个。
@@ -130,7 +132,7 @@ ElecMini 对其中**核心 20 个模块**的成员做了逐项语义分级，共
 - **无 Electron 级 contextIsolation**：preload 与页面同 realm；隔离依赖 host 侧 origin 锚定 + IPC 来源校验。**不要**把它当作安全沙箱使用。
 - **同步 API 降级**：`sendSync` 返回 `undefined`、`showMessageBoxSync` 返回 `defaultId` 等——类型正确但不是真实交互结果，需改写为异步。
 - **架构不可补**：Chromium 扩展体系、`@electron/remote` 明确不支持。
-- **CDP / DevTools** 在 Windows WebView2 可用，macOS / Linux 无等价实现。
+- **CDP 命令协议**（`webContents.debugger.sendCommand`）仅 Windows WebView2 原生支持——CDP 是 Chromium 私有协议，WebKit 生态没有等价协议。**DevTools 调试窗口**则三平台可用：`openDevTools()` 在 Windows 走 WebView2、macOS 走 WKWebView 私有 API、Linux 走 WebKitWebInspector。macOS/Linux 的远程调试用 Web Inspector Protocol（Safari Develop 菜单 / `WEBKIT_INSPECTOR_SERVER`），不是 CDP。
 - **L0 ≥95% 的 Go/No-Go 结论**仍需生产遥测样本（当前本地样本远低于统计最小样本 385）。
 
 ## 文档索引

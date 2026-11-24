@@ -26,7 +26,6 @@
   "runtime/jsonrpc.js": "5060778ada1ce5927a2014624857604dbf49a97621bf82964657c434c01765e6",
   "runtime/launcher.js": "52c10093d1375d2f318952c8f4166210d8ef0345612ec82a47f3603c005f138d",
   "runtime/modules/app.js": "5d4d2eb00781de000a8dac6c0d80b08a249f7c6a39133bfdfe1d0b790ff5d83b",
-  "runtime/modules/browser-window.js": "4c9274a1f64bfe6b498de92c04b151226f6742c7bc2ac3f8bf0c35cff86388e1",
   "runtime/modules/clipboard.js": "464745e6b60392b337793a05acbee613092d732f5961de8aa230e29e60198c09",
   "runtime/modules/global-shortcut.js": "9bc9b9393144d207b1a94d759a9ed50f07644f547821e46e34a1a434cc772da9",
   "runtime/modules/ipc.js": "ccc534f349bdec95602d7e63a3552415523b5d2bb075788cf089e7c2cb4e359d",

@@ -9,7 +9,8 @@
 |---|---|
 | `run.js` | 差分契约运行器：两侧各跑一遍 `probe-app/`，产出比对报告 |
 | `probe-app/` | 探针应用：定义 42 个 API 观测用例（类型签名 + 行为值） |
-| `s4-check.js` | S4 专属能力验收：请求头注入 / CDP 命令 / CDP 事件 / DevTools |
+| `s4-check.js` | S4 专属能力验收（Windows WebView2）：请求头注入 / CDP 命令 / CDP 事件 / DevTools |
+| `devtools-check.js` | 跨平台 DevTools 能力验收：三平台 devtools=true，后端正确，非 Windows 明确降级 CDP |
 | `win-check.js` | Windows 安全加固 + 平台降级验收 |
 | `results/` | 运行时产物（报告，已 gitignore） |
 

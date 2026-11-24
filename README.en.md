@@ -115,11 +115,13 @@ Tiers are generated live by `node migrate/api-surface/audit.js`; the full unsupp
 
 ## Platform support
 
-| Platform | WebView | Build | E2E verification |
-|---|---|---|---|
-| Windows | WebView2 | ✅ | ✅ Full native suite (security 22/22, differential contract 42/42) |
-| macOS | WKWebView | ✅ | CI build + unit tests; runtime needs a macOS machine |
-| Linux | WebKitGTK | ✅ | ✅ Full (differential 42/42, E2E; needs `xvfb-run`) |
+| Platform | WebView | Build | DevTools backend | E2E verification |
+|---|---|---|---|---|
+| Windows | WebView2 | ✅ | WebView2 CDP (incl. command protocol) | ✅ Full native suite (security 22/22, differential contract 42/42) |
+| macOS | WKWebView | ✅ | WKWebView private API | CI build + unit tests; runtime needs a macOS machine |
+| Linux | WebKitGTK | ✅ | WebKitWebInspector | ✅ Full (differential 42/42, E2E; needs `xvfb-run`) |
+
+> **CDP command protocol** (`webContents.debugger.sendCommand`) is native to Windows only — CDP is a Chromium-private protocol with no WebKit equivalent. The DevTools inspector window works on all three platforms (macOS uses a private API, so release builds explicitly enable wry's `devtools` feature; evaluate private-API compliance before App Store submission).
 
 > 17 of the 42 differential cases depend on a real window / screen / session and **must run in a display environment**
 > (Linux: `xvfb-run`; Windows: real desktop). Without a display they are not written, so only 25 cases are compared.
@@ -129,7 +131,7 @@ Tiers are generated live by `node migrate/api-surface/audit.js`; the full unsupp
 - **No Electron-grade contextIsolation**: preload and page share the same realm; isolation relies on host-side origin anchoring + IPC source validation. **Do not** treat it as a security sandbox.
 - **Sync API degradation**: `sendSync` returns `undefined`, `showMessageBoxSync` returns `defaultId`, etc. — type-correct but not real interaction results; rewrite to async.
 - **Architecturally unfixable**: Chromium extension system and `@electron/remote` are explicitly unsupported.
-- **CDP / DevTools** work on Windows WebView2; no equivalent on macOS / Linux.
+- **CDP command protocol** (`webContents.debugger.sendCommand`) is native to Windows WebView2 only — CDP is a Chromium-private protocol with no equivalent in the WebKit family. **The DevTools inspector window**, however, works on all three platforms: `openDevTools()` uses WebView2 on Windows, WKWebView's private API on macOS, and WebKitWebInspector on Linux. Remote debugging on macOS/Linux uses the Web Inspector Protocol (Safari Develop menu / `WEBKIT_INSPECTOR_SERVER`), not CDP.
 - **The L0 ≥95% Go/No-Go conclusion** still needs production telemetry samples (current local samples are far below the statistical minimum of 385).
 
 ## Documentation index

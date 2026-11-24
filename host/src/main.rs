@@ -328,12 +328,30 @@ fn main() {
                         }
                         "web:openDevTools" => {
                             let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
-                            let ok = webviews.get(&win_id).and_then(|w| s4::open_devtools(w).ok()).is_some();
-                            if !notify { respond(&out, id, json!({ "ok": ok })); }
+                            let result = webviews.get(&win_id).ok_or_else(|| "目标窗口不存在".to_string())
+                                .and_then(s4::open_devtools);
+                            if !notify {
+                                respond(&out, id, match result {
+                                    Ok(()) => json!({ "ok": true }),
+                                    Err(e) => json!({ "ok": false, "reason": e }),
+                                });
+                            }
                         }
                         "web:closeDevTools" => {
-                            // WebView2 无独立关闭 API；DevTools 窗口由用户关闭
-                            if !notify { respond(&out, id, json!({ "ok": false, "reason": "WebView2 DevTools 需用户手动关闭" })); }
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let result = webviews.get(&win_id).ok_or_else(|| "目标窗口不存在".to_string())
+                                .and_then(s4::close_devtools);
+                            if !notify {
+                                respond(&out, id, match result {
+                                    Ok(()) => json!({ "ok": true }),
+                                    Err(e) => json!({ "ok": false, "reason": e }),
+                                });
+                            }
+                        }
+                        "web:isDevToolsOpen" => {
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let open = webviews.get(&win_id).map(s4::is_devtools_open).unwrap_or(false);
+                            if !notify { respond(&out, id, json!({ "open": open })); }
                         }
                         "session:clearCache" => {
                             if !notify { respond(&out, id, json!({ "ok": true })); }

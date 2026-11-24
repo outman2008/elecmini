@@ -89,7 +89,7 @@ Linux x64 实测（口径写在图里）：
 - **不降内存**。实测 PSS 约为 Electron 的 107%，系统 WebView 引擎仍是固定成本，240MB 级"引擎税"消不掉。想要低内存的话，这个项目不是答案。
 - **没有 Electron 级的 contextIsolation**，preload 和页面同 realm，别当安全沙箱用。
 - **同步 API 是降级桩**，需要改写成异步；Chromium 扩展、`@electron/remote` 不支持。
-- CDP / DevTools 只有 Windows WebView2 有。
+- CDP 命令协议只有 Windows WebView2 有；DevTools 调试窗口三平台都可用（Linux/macOS 用 Web Inspector）。
 
 ### 适合谁
 

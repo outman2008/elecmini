@@ -15,11 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Restored real-project migration examples** from git history after the public-release cleanup: `migrate/full-app/` (electron-api-demos full-UI adapter + 6-assertion DOM verifier), `migrate/probes/` (caprine / electron-react-boilerplate / electron-api-demos API probes), and `migrate/REPORT-*.md` (real-project findings). Added `migrate/full-app/README.md` with reproduction steps, made `verify.js` accept `--src`/`--out`, and gitignored the third-party source and adapted output. Revalidated end-to-end: caprine probe 45/45, full-UI verify 6/6.
 - **Discoverability / AI assets**: `assets/social-preview.png` (1280x640 share image, set as the GitHub Social preview), `llms.txt` (machine-readable project summary + canonical doc links for LLM retrieval), and `AGENTS.md` (AI coding-agent entry: layout, commands, encoding conventions). All three added to the npm `files` whitelist.
+- **Cross-platform DevTools**: `openDevTools()` / `closeDevTools()` / `isDevToolsOpen()` now work on all three platforms. Previously every non-Windows platform was hard-coded to error even though wry provides native Web Inspector support. Enabled wry's `devtools` feature so release builds include it; added `contract/devtools-check.js` (5 assertions, wired into CI).
 
 ### Changed
 
 - **Repository metadata**: description front-loads the `Electron alternative` keyword; topics expanded 12 → 16 (added `javascript`, `cross-platform`, `lightweight`, `gui`); homepage now points to the npm package instead of self-referencing the README.
 - **README section headings** (both languages) rewritten as question-style for human and AI extraction ("What is ElecMini?", "How does it compare with Electron/Tauri?", "Which API tiers exist?", "What are the known limits?"). Content unchanged; no anchor links broken.
+- **Honest capability reporting**: `s4:capabilities` now distinguishes CDP (Windows-only, Chromium-private protocol) from the DevTools inspector window (all platforms). Non-Windows reports `devtools: true` with a platform backend (`webview2` / `wkwebview-private-api` / `webkit-web-inspector`) and a `cdpAlternative` hint (Safari Web Inspector / `WEBKIT_INSPECTOR_SERVER`). README (both languages) and promo drafts updated to match.
 
 ## [1.0.2] - 2026-11-24
 
