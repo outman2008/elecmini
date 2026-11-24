@@ -55,6 +55,25 @@ git remote set-url origin https://github.com/outman2008/elecmini.git
 
 因此 SSH 推送在当前环境不可用，凭证已完整配置并上传 GitHub，待在正常网络环境（本地开发机 / CI）使用。
 
+## 沙箱重建 / 环境恢复
+
+私钥默认在 `~/.ssh/`，沙箱回收后会丢失。已将凭证**备份到工作区**（在 Git 仓库之外，不会随仓库提交）：
+
+| 项 | 路径 |
+|---|---|
+| 备份目录 | `/workspace/.credentials/ssh/`（含 `id_ed25519`、`.pub`、`config`） |
+| 恢复脚本 | `/workspace/.credentials/restore-ssh.sh` |
+
+环境重建后，一条命令还原：
+
+```bash
+bash /workspace/.credentials/restore-ssh.sh
+```
+
+脚本会重建 `~/.ssh/`、恢复三个文件、设置正确权限并打印指纹核对（应为 `SHA256:Ryc8TYqH7oeH78xnCLPBSB4BD5Nz+5nUqLWMGQo4rP4`）。
+
+> 注意：备份目录含**私钥**，仅放在工作区用于防丢失，**切勿**将其加入 Git 仓库或对外分享。仓库内的本文档只记录公钥指纹，不含私钥。
+
 ## 安全提醒
 
 - 私钥 `~/.ssh/id_ed25519` 权限 600，已被 `.gitignore` 天然排除（在 `~/.ssh`，不在仓库内）。
