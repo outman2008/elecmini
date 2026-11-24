@@ -27,6 +27,11 @@ gate-paths.jsonl
 # 官方 API 表面检测的运行时产物（由 audit.js 重新生成）
 migrate/api-surface/results/
 
+# 真实迁移示例：第三方源码与适配产物（按需拉取/生成，不入库）
+migrate/full-app/electron-api-demos/
+migrate/full-app/electron-api-demos-adapted/
+migrate/probes/*/out.json
+
 # 系统/编辑器
 .DS_Store
 *.swp

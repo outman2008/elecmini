@@ -18,6 +18,16 @@
 
 > `migrate/reports/`、`contract/results/` 均为运行时产物目录，不随仓库分发。
 
+## 已恢复的真实项目示例
+
+本目录保留了三组真实项目验证材料（此前发布清理时移除，现已从 git 历史恢复并验证可复现）：
+
+- [`migrate/full-app/`](./full-app/README.md) — electron-api-demos 的**完整 UI 迁移**，含自动适配脚本与 6 项 DOM 断言；实测挖出并修复了 clipboard 断链与 `executeJavaScript` 返回值多包一层两个真实缺陷。
+- [`migrate/probes/`](./probes/) — caprine / electron-react-boilerplate / electron-api-demos 三个主流项目自动生成的 API 探针（另见 `../REPORT-*.md` 的实测报告）。
+- `migrate/REPORT-*.md` — 真实项目实测报告与结论。
+
+> 完整 UI 示例的第三方源码需按 [`full-app/README.md`](./full-app/README.md) 自行拉取，不入库；探针自包含、可直接运行。
+
 ## 第一步：静态扫描
 
 ```bash

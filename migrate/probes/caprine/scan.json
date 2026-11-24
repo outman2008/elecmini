@@ -1,0 +1,837 @@
+{
+  "generatedAt": "2026-11-24T10:14:14.202Z",
+  "project": "<目标应用目录>/caprine",
+  "fileCount": 22,
+  "totalCallSites": 84,
+  "byStatus": {
+    "🟡": 30,
+    "❌不支持": 2,
+    "✅": 42,
+    "⚠️": 1,
+    "❌": 3,
+    "🟠": 5,
+    "❓未列": 1
+  },
+  "byModule": {
+    "nativeImage": 7,
+    "dialog": 6,
+    "app": 42,
+    "Menu": 9,
+    "webPreferences": 5,
+    "BrowserWindow": 2,
+    "shell": 6,
+    "systemPreferences": 1,
+    "Notification": 1,
+    "globalShortcut": 2,
+    "session": 1,
+    "TouchBar": 1,
+    "Tray": 1
+  },
+  "findings": [
+    {
+      "module": "nativeImage",
+      "method": "createFromDataURL",
+      "status": "🟡",
+      "line": 263,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromDataURL 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/emoji.ts"
+    },
+    {
+      "module": "nativeImage",
+      "method": "createFromPath",
+      "status": "🟡",
+      "line": 268,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromPath 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/emoji.ts"
+    },
+    {
+      "module": "dialog",
+      "method": "showMessageBoxSync",
+      "status": "❌不支持",
+      "line": 5,
+      "kind": "call",
+      "via": "dialog",
+      "unsupported": true,
+      "rewrite": "dialog.showMessageBoxSync → 改为 await dialog.showMessageBox()",
+      "note": "方法 showMessageBoxSync 未在归属表中登记，按宿主模块 dialog 判定",
+      "file": "source/ensure-online.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 16,
+      "kind": "call",
+      "via": "app",
+      "file": "source/ensure-online.ts"
+    },
+    {
+      "module": "app",
+      "method": "setAppUserModelId",
+      "status": "✅",
+      "line": 40,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 setAppUserModelId 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "disableHardwareAcceleration",
+      "status": "✅",
+      "line": 42,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 disableHardwareAcceleration 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "requestSingleInstanceLock",
+      "status": "✅",
+      "line": 58,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 requestSingleInstanceLock 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 59,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "on",
+      "status": "✅",
+      "line": 61,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "on",
+      "status": "✅",
+      "line": 70,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.bounce",
+      "status": "✅",
+      "line": 85,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.bounce 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "nativeImage",
+      "method": "createFromDataURL",
+      "status": "🟡",
+      "line": 109,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromDataURL 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "getLocale",
+      "status": "✅",
+      "line": 169,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 getLocale 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "getApplicationMenu",
+      "status": "🟡",
+      "line": 180,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 getApplicationMenu 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "webPreferences",
+      "option": "preload",
+      "status": "🟡",
+      "line": 212,
+      "kind": "option",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "webPreferences",
+      "option": "contextIsolation",
+      "status": "⚠️",
+      "line": 213,
+      "kind": "option",
+      "value": true,
+      "file": "source/index.ts"
+    },
+    {
+      "module": "webPreferences",
+      "option": "nodeIntegration",
+      "status": "❌",
+      "line": 214,
+      "kind": "option",
+      "value": true,
+      "file": "source/index.ts"
+    },
+    {
+      "module": "BrowserWindow",
+      "status": "🟡",
+      "line": 194,
+      "kind": "new",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 236,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "hide",
+      "status": "✅",
+      "line": 254,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 hide 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "whenReady",
+      "status": "✅",
+      "line": 280,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "buildFromTemplate",
+      "status": "🟡",
+      "line": 299,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 buildFromTemplate 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.setMenu",
+      "status": "✅",
+      "line": 300,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.setMenu 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.show",
+      "status": "✅",
+      "line": 303,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.show 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "nativeImage",
+      "method": "createFromDataURL",
+      "status": "🟡",
+      "line": 316,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromDataURL 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "buildFromTemplate",
+      "status": "🟡",
+      "line": 322,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 buildFromTemplate 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.setMenu",
+      "status": "✅",
+      "line": 322,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.setMenu 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "getPath",
+      "status": "✅",
+      "line": 345,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "getPath",
+      "status": "✅",
+      "line": 346,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "getLoginItemSettings",
+      "status": "✅",
+      "line": 348,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 getLoginItemSettings 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 382,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "webPreferences",
+      "option": "nodeIntegration",
+      "status": "❌",
+      "line": 395,
+      "kind": "option",
+      "value": false,
+      "file": "source/index.ts"
+    },
+    {
+      "module": "webPreferences",
+      "option": "preload",
+      "status": "🟡",
+      "line": 396,
+      "kind": "option",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 404,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openExternal",
+      "status": "🟡",
+      "line": 440,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openExternal 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "systemPreferences",
+      "method": "getUserDefault",
+      "status": "🟠",
+      "line": 459,
+      "kind": "call",
+      "via": "systemPreferences",
+      "note": "方法 getUserDefault 未在归属表中登记，按宿主模块 systemPreferences 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "on",
+      "status": "✅",
+      "line": 471,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "app",
+      "method": "on",
+      "status": "✅",
+      "line": 476,
+      "kind": "call",
+      "via": "app",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "nativeImage",
+      "method": "createFromDataURL",
+      "status": "🟡",
+      "line": 495,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromDataURL 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "Notification",
+      "status": "❌",
+      "line": 491,
+      "kind": "new",
+      "file": "source/index.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "getApplicationMenu",
+      "status": "🟡",
+      "line": 8,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 getApplicationMenu 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/menu-bar-mode.ts"
+    },
+    {
+      "module": "globalShortcut",
+      "method": "register",
+      "status": "🟠",
+      "line": 12,
+      "kind": "call",
+      "via": "globalShortcut",
+      "note": "方法 register 未在归属表中登记，按宿主模块 globalShortcut 判定",
+      "file": "source/menu-bar-mode.ts"
+    },
+    {
+      "module": "globalShortcut",
+      "method": "unregister",
+      "status": "🟠",
+      "line": 23,
+      "kind": "call",
+      "via": "globalShortcut",
+      "note": "方法 unregister 未在归属表中登记，按宿主模块 globalShortcut 判定",
+      "file": "source/menu-bar-mode.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.show",
+      "status": "✅",
+      "line": 25,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.show 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu-bar-mode.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 33,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 34,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 43,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 44,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "getPath",
+      "status": "✅",
+      "line": 192,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openPath",
+      "status": "🟡",
+      "line": 204,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openPath 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "dialog",
+      "method": "showMessageBox",
+      "status": "🟡",
+      "line": 319,
+      "kind": "call",
+      "via": "dialog",
+      "note": "方法 showMessageBox 未在归属表中登记，按宿主模块 dialog 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "getLoginItemSettings",
+      "status": "✅",
+      "line": 350,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 getLoginItemSettings 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "setLoginItemSettings",
+      "status": "✅",
+      "line": 352,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 setLoginItemSettings 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "dialog",
+      "method": "showMessageBox",
+      "status": "🟡",
+      "line": 368,
+      "kind": "call",
+      "via": "dialog",
+      "note": "方法 showMessageBox 未在归属表中登记，按宿主模块 dialog 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "dialog",
+      "method": "showMessageBox",
+      "status": "🟡",
+      "line": 474,
+      "kind": "call",
+      "via": "dialog",
+      "note": "方法 showMessageBox 未在归属表中登记，按宿主模块 dialog 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "getPath",
+      "status": "✅",
+      "line": 690,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "openPath",
+      "status": "🟡",
+      "line": 690,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 openPath 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 700,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 701,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "getPath",
+      "status": "✅",
+      "line": 707,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "shell",
+      "method": "trashItem",
+      "status": "🟡",
+      "line": 707,
+      "kind": "call",
+      "via": "shell",
+      "note": "方法 trashItem 未在归属表中登记，按宿主模块 shell 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 708,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 709,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 736,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 737,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 803,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 804,
+      "kind": "call",
+      "via": "app",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "buildFromTemplate",
+      "status": "🟡",
+      "line": 835,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 buildFromTemplate 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "setApplicationMenu",
+      "status": "🟡",
+      "line": 836,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 setApplicationMenu 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/menu.ts"
+    },
+    {
+      "module": "session",
+      "method": "defaultSession.setSpellCheckerLanguages",
+      "status": "🟠",
+      "line": 86,
+      "kind": "call",
+      "via": "session",
+      "note": "方法 defaultSession.setSpellCheckerLanguages 未在归属表中登记，按宿主模块 session 判定",
+      "file": "source/spell-checker.ts"
+    },
+    {
+      "module": "nativeImage",
+      "method": "createFromPath",
+      "status": "🟡",
+      "line": 10,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromPath 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/touch-bar.ts"
+    },
+    {
+      "module": "TouchBar",
+      "status": "❓未列",
+      "line": 14,
+      "kind": "new",
+      "file": "source/touch-bar.ts"
+    },
+    {
+      "module": "nativeImage",
+      "method": "createFromDataURL",
+      "status": "🟡",
+      "line": 29,
+      "kind": "call",
+      "via": "nativeImage",
+      "note": "方法 createFromDataURL 未在归属表中登记，按宿主模块 nativeImage 判定",
+      "file": "source/touch-bar.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "getApplicationMenu",
+      "status": "🟡",
+      "line": 28,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 getApplicationMenu 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/tray.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.show",
+      "status": "✅",
+      "line": 48,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.show 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/tray.ts"
+    },
+    {
+      "module": "app",
+      "method": "dock.hide",
+      "status": "✅",
+      "line": 51,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 dock.hide 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/tray.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "getApplicationMenu",
+      "status": "🟡",
+      "line": 64,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 getApplicationMenu 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/tray.ts"
+    },
+    {
+      "module": "Menu",
+      "method": "buildFromTemplate",
+      "status": "🟡",
+      "line": 67,
+      "kind": "call",
+      "via": "Menu",
+      "note": "方法 buildFromTemplate 未在归属表中登记，按宿主模块 Menu 判定",
+      "file": "source/tray.ts"
+    },
+    {
+      "module": "Tray",
+      "status": "🟠",
+      "line": 83,
+      "kind": "new",
+      "file": "source/tray.ts"
+    },
+    {
+      "module": "BrowserWindow",
+      "method": "getAllWindows",
+      "status": "🟡",
+      "line": 7,
+      "kind": "call",
+      "via": "BrowserWindow",
+      "note": "方法 getAllWindows 未在归属表中登记，按宿主模块 BrowserWindow 判定",
+      "file": "source/util.ts"
+    },
+    {
+      "module": "dialog",
+      "method": "showMessageBoxSync",
+      "status": "❌不支持",
+      "line": 21,
+      "kind": "call",
+      "via": "dialog",
+      "unsupported": true,
+      "rewrite": "dialog.showMessageBoxSync → 改为 await dialog.showMessageBox()",
+      "note": "方法 showMessageBoxSync 未在归属表中登记，按宿主模块 dialog 判定",
+      "file": "source/util.ts"
+    },
+    {
+      "module": "app",
+      "method": "relaunch",
+      "status": "✅",
+      "line": 32,
+      "kind": "call",
+      "via": "app",
+      "note": "方法 relaunch 未在归属表中登记，按宿主模块 app 判定",
+      "file": "source/util.ts"
+    },
+    {
+      "module": "app",
+      "method": "quit",
+      "status": "✅",
+      "line": 33,
+      "kind": "call",
+      "via": "app",
+      "file": "source/util.ts"
+    },
+    {
+      "module": "dialog",
+      "method": "showMessageBox",
+      "status": "🟡",
+      "line": 62,
+      "kind": "call",
+      "via": "dialog",
+      "note": "方法 showMessageBox 未在归属表中登记，按宿主模块 dialog 判定",
+      "file": "source/util.ts"
+    }
+  ]
+}

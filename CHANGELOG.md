@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Logo redesigned** (`assets/logo.svg`): the previous dark badge with a full electron-style atom is replaced by a more abstract mark — one open, lightweight orbit (candy gradient rose → violet → cyan), a warm amber core standing for the preserved JS API contract, and three small platform dots (WebView2 / WKWebView / WebKitGTK) on a clean triangular orbit. The badge background was dropped in favour of a transparent canvas, so the mark reads equally well on GitHub's light and dark themes. Same file path, no reference changes needed.
 
+### Added
+
+- **Restored real-project migration examples** from git history after the public-release cleanup: `migrate/full-app/` (electron-api-demos full-UI adapter + 6-assertion DOM verifier), `migrate/probes/` (caprine / electron-react-boilerplate / electron-api-demos API probes), and `migrate/REPORT-*.md` (real-project findings). Added `migrate/full-app/README.md` with reproduction steps, made `verify.js` accept `--src`/`--out`, and gitignored the third-party source and adapted output. Revalidated end-to-end: caprine probe 45/45, full-UI verify 6/6.
+
 ## [1.0.2] - 2026-11-24
 
 Quality-gate and Codec regression hardening. No runtime behavior changes.
