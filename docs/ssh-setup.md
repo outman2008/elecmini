@@ -47,13 +47,26 @@ git push
 git remote set-url origin https://github.com/outman2008/elecmini.git
 ```
 
-## 当前环境限制
+## 当前环境限制与解决
 
-本沙箱网络层只放行 HTTP/HTTPS 流量：
-- 22 端口：连接超时
-- 443 端口走 SSH 协议：TCP 通但无 SSH banner（中间设备拦截 SSH 协议）
+**根因（2026-11-24 实测确认）**：本沙箱的 DNS 把 `github.com` / `ssh.github.com` 解析到腾讯云 GA 加速节点 `43.139.79.195`，该节点 TCP 端口（22/443）都通，但**不转发 SSH 协议**——握手卡在发送本地版本串后收不到服务器 banner。这是"SSH 被拦截"误判的真正来源，并非端口被封。
 
-因此 SSH 推送在当前环境不可用，凭证已完整配置并上传 GitHub，待在正常网络环境（本地开发机 / CI）使用。
+**解决方案**：用 `ProxyCommand` 直连 GitHub 真实 IP，绕过有毒 DNS 解析。当前 `~/.ssh/config` 已按此配置：
+
+```
+Host github.com
+  HostName github.com
+  Port 22
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+  ProxyCommand nc -w 10 140.82.112.3 22   # 直连真实 IP，绕过 GA 节点
+  ServerAliveInterval 60
+  ServerAliveCountMax 3
+```
+
+验证：`ssh -T git@github.com` 应输出 `Hi outman2008!`。已实测认证成功，`git push origin-ssh main` 正常推送。
+
+> 若真实 IP 变化导致失效，重新查询 GitHub IP 段（如 `140.82.112.3`、`140.82.113.3`、`20.205.243.166`）并替换 `ProxyCommand` 中的地址。工作区备份 `/workspace/.credentials/ssh/config` 已同步此配置。
 
 ## 沙箱重建 / 环境恢复
 
