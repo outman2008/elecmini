@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-11-24
+
+Quality-gate and Codec regression hardening. No runtime behavior changes.
+
+### Added
+
+- **Prettier ratchet gate** (`ci/prettier-ratchet.js` + `ci/prettier-baseline.json`): an incremental formatting gate that exempts historical files by content hash but blocks any newly added or edited file that is still non-compliant. Once a file becomes compliant it is removed from the baseline — the rule only tightens. Wired into `ci/check.sh` and exposed as `npm run format:ratchet` / `format:baseline`. Meets the "do not block legacy code" requirement while preventing new drift.
+- **6 new Codec cross-realm consistency cases** (`runtime/codec-consistency.test.js`, 4 → 10): label-set alignment (incl. the documented Buffer→TypedArray browser downgrade), nested containers, empty containers, multi-constructor TypedArrays, BigInt extremes + Unicode, and DataView downgrade. Locks the two-end wire contract so a label change on either side fails CI immediately.
+
+### Changed
+
+- `package.json` `files` whitelist now carries the ratchet script and baseline so the published `ci/check.sh` does not reference a missing file.
+- `ci/README.md` documents the ratchet gate and its commands.
+
 ## [1.0.1] - 2026-11-24
 
 Packaging and usability fixes for the first public release.

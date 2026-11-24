@@ -30,8 +30,10 @@ has_rust_component() { rustup component list --installed 2>/dev/null | grep -q "
 # 0) 质量门禁：JS lint / Rust 格式 / clippy
 if [ -d node_modules ] && command -v npx >/dev/null 2>&1; then
   run "JS lint(eslint)" bash -c 'npx eslint runtime shim/src pack contract migrate/*.js'
+  # Prettier 增量门禁（棘轮）：历史不合规文件豁免，只拦新增/改动后仍不合规的文件
+  run "Prettier 增量门禁(棘轮)" node ci/prettier-ratchet.js
 else
-  echo "[SKIP] JS lint：未安装 node_modules（npm install 后启用）"
+  echo "[SKIP] JS lint / Prettier：未安装 node_modules（npm install 后启用）"
 fi
 if command -v cargo >/dev/null 2>&1; then
   if has_rust_component rustfmt; then

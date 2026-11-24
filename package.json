@@ -47,6 +47,8 @@
     "pack/gray-config.json",
     "pack/templates/",
     "ci/check.sh",
+    "ci/prettier-ratchet.js",
+    "ci/prettier-baseline.json",
     "contract/*.js",
     "contract/probe-app/",
     "compat/baseline.json",
@@ -65,6 +67,8 @@
   "scripts": {
     "lint": "eslint runtime shim/src pack contract",
     "format:check": "prettier --check \"runtime/**/*.js\" \"shim/src/**/*.js\" \"pack/**/*.js\" \"contract/**/*.js\"",
+    "format:ratchet": "node ci/prettier-ratchet.js",
+    "format:baseline": "node ci/prettier-ratchet.js --update",
     "test": "bash ci/check.sh --quick",
     "test:full": "bash ci/check.sh"
   },
