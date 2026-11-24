@@ -22,7 +22,7 @@ use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 
-const EDGEUPDATE_CLSID: &str = "{F3017226-FE2A-4298-BAD4-A97A08E2D64F}";
+const EDGEUPDATE_CLSID: &str = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
 const MIN_MAJOR: u64 = 120; // gate-design.md 2. WebView2 Runtime >= 120
 
 #[allow(dead_code)] // L3 保留以对齐 gate-design.md 的完整分级（Windows 不走 L3）
@@ -86,7 +86,7 @@ fn reg_read_sz(root: isize, subkey: &str, value: &str) -> Option<String> {
     if rc != ERROR_SUCCESS {
         return None;
     }
-    defer_close(key);
+    let _guard = defer_close(key);
 
     let val = to_wide(value);
     let mut ty = 0u32;
@@ -177,22 +177,30 @@ fn policy_blocks_bootstrapper() -> bool {
 /// 返回 (版本字符串, 主版本号, 来源描述)。
 fn probe_version() -> (Option<String>, u64, String) {
     let subkey = format!(
-        r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{}\pv",
+        r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{}",
         EDGEUPDATE_CLSID
     );
     let subkey_hkcu = format!(
-        r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{}\pv",
+        r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{}",
         EDGEUPDATE_CLSID
     );
 
-    let hklm = reg_read_sz(HKEY_LOCAL_MACHINE, &subkey, "");
-    let hkcu = reg_read_sz(HKEY_CURRENT_USER, &subkey_hkcu, "");
+    let hklm = reg_read_sz(HKEY_LOCAL_MACHINE, &subkey, "pv");
+    let hkcu = reg_read_sz(HKEY_CURRENT_USER, &subkey_hkcu, "pv");
 
-    // 测试注入优先（wine 无 WebView2 时验证决策分支）
-    let injected = std::env::var("ELECMINI_TEST_PV").ok();
+    // 测试注入最高优先级：一旦设置（含空串=模拟缺失），完全覆盖真实注册表。
+    // 真实 Windows 上注册表有版本时，若仍走"取最高者"，注入的低版本会被真实版本压过，
+    // 导致 L1/L2 分支无法验证（wine 无注册表时掩盖了此问题）。
+    if let Ok(v) = std::env::var("ELECMINI_TEST_PV") {
+        let major = version_major(&v);
+        return (
+            if v.is_empty() { None } else { Some(v) },
+            major,
+            "TEST_PV:injected".into(),
+        );
+    }
 
     let candidates: Vec<(String, &str)> = [
-        injected.map(|v| (v, "TEST_PV")),
         hklm.map(|v| (v, "HKLM")),
         hkcu.map(|v| (v, "HKCU")),
     ]
@@ -273,12 +281,17 @@ fn main() {
 
     let api = api_recheck();
     println!("[probe] API recheck = {:?}", api.as_deref().unwrap_or("<not installed>"));
-    let api_ok = if api.is_some() {
-        // API 复核到版本串时以其为准（更可靠）
-        true
+    // 注入的 API 版本串必须按基线比较（如 ELECMINI_TEST_API_VERSION=109 应判不满足），
+    // 不能只看 Some/None——wine 阶段的用例均注入 >=120，掩盖了此问题。
+    let api_ok = if let Some(ref v) = api {
+        if std::env::var("ELECMINI_TEST_API_VERSION").is_ok() {
+            version_major(v) >= MIN_MAJOR
+        } else {
+            // 真实探测只拿到 DLL 路径/近似串，版本以注册表为准
+            true
+        }
     } else {
-        // DLL 未找到时：若注册表有版本且测试未强制 API 失败，仍视为可用
-        // （wine 下没有 WebView2Loader.dll，但注册表版本是有效信号）
+        // DLL 未找到时：若注册表有版本，仍视为可用（注册表是有效信号）
         major >= MIN_MAJOR
     };
 

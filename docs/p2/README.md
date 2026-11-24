@@ -29,7 +29,7 @@
 | **protocol** | 无 | wry `with_custom_protocol` 注册 `app://` + registerString/FileProtocol shim | `didFinishLoad=app://local/index.html` |
 | **dialog** | 确定性桩 | zenity 原生对话框（open/save/message/error），autotest 注入避免阻塞 | `dialog={"filePaths":["/tmp/p2-file.txt"]}` |
 | **shell.clipboard** | 返回空串 | xclip 真实读写 + host 内存镜像兜底（无 X owner 时） | `clipboard={"text":"p2-clipboard"}` |
-| **session.webRequest** | 抛错 | onBeforeRequest/onHeadersReceived 事件订阅 + host 订阅接口 | `sessionWebRequest=function` |
+| **session.webRequest** | 抛错 | onBeforeRequest/onHeadersReceived 事件订阅 + host 订阅接口；S4 补上 Windows WebView2 请求头改写（options.headers） | `sessionWebRequest=function`；S4 回显 `injected=s4-ok` |
 | **powerMonitor** | 未实现 | EventEmitter + 电池状态/空闲时间 host 查询 | `onBattery=false` |
 | **systemPreferences** | 未实现 | isDarkMode/getColor/getUserDefault + host 支撑 | `isDarkMode=false` |
 | **Tray** | 抛错 | 完整 Tray API 形状 + host 能力探测（无 tray-icon crate → 明确降级） | `tray=ok (degraded)` |
@@ -123,6 +123,6 @@ ELECMINI_AUTOTEST=1 timeout 16 xvfb-run -a node runtime/launcher.js test-app-p1
 |---|---|---|
 | Tray / globalShortcut 真原生 | 明确降级 | 需 tray-icon/global-hotkey crate + 桌面环境 appindicator/全局热键支持；P3 打包真实桌面环境时可按需启用 |
 | safeStorage 用 AEAD | 记录 | openssl enc 不支持 GCM；生产建议改 `aes-gcm` crate |
-| Windows WebRequest（headers 改写） | 未覆盖 | 文档 S4 Windows 专属能力，需真实 Windows + WebView2（wine 受限，见 p0/windows-verification.md） |
+| Windows WebRequest（headers 改写） | ✅ 已覆盖（S4 补验） | WebView2 `WebResourceRequested` 真实改请求头，见 `test-app-s4` 与 `contract/s4-check.js`（7/7） |
 | 真实目标应用 | 占位 | 仍用 test-app-p1/p2；文档 11.2 阻塞项未解 |
 | 打包分发 / 门禁 L1/L2 | → P3 | 本次未涉及，进入 P3 |

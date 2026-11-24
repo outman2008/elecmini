@@ -27,6 +27,12 @@ function createStaticServer(rootDir) {
     let urlPath;
     try { urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
     catch (_) { res.writeHead(400); res.end('bad url'); return; }
+    // S4 验收：回显请求头，用于验证 WebView2 WebResourceRequested 注入是否生效
+    if (urlPath === '/__s4_echo') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ url: req.url, headers: req.headers }));
+      return;
+    }
     if (urlPath === '/') urlPath = '/index.html';
     const filePath = path.resolve(root, '.' + urlPath);
     // 目录穿越防护

@@ -17,12 +17,61 @@ const { EventEmitter } = require('events');
 const path = require('path');
 const ctx = require('../context');
 
+/**
+ * S4：webContents.debugger — Electron 兼容的 CDP 门面。
+ * Windows 上由 WebView2 CallDevToolsProtocolMethod 实现；其他平台 sendCommand 明确 reject。
+ */
+class DebuggerShim extends EventEmitter {
+  constructor(winId, rpc) {
+    super();
+    this.id = winId;
+    this._rpc = rpc;
+    this._seq = 1;
+    this._pending = new Map();
+    this._attached = false;
+    rpc.on('cdp:result', (msg) => {
+      const p = this._pending.get(msg.id);
+      if (!p) return;
+      this._pending.delete(msg.id);
+      clearTimeout(p.timer);
+      if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error || 'CDP error'));
+    });
+    rpc.on('cdp:event', (msg) => {
+      if (msg.winId === this.id) this.emit('message', { sender: this }, msg.eventName, msg.params);
+    });
+  }
+  attach() { this._attached = true; return Promise.resolve(); }
+  detach() { this._attached = false; return Promise.resolve(); }
+  isAttached() { return this._attached; }
+  /** ElecMini 扩展：订阅 WebView2 CDP 事件（结果经 'message' 事件投递） */
+  subscribeEvent(eventName) { return this._rpc.call('cdp:subscribe', { winId: this.id, eventName }); }
+  sendCommand(method, params = {}) {
+    const id = this._seq++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._pending.delete(id);
+        reject(new Error(`CDP timeout: ${method}`));
+      }, 8000);
+      this._pending.set(id, { resolve, reject, timer });
+      this._rpc.call('cdp:sendCommand', { winId: this.id, id, method, params })
+        .catch((e) => {
+          const p = this._pending.get(id);
+          if (!p) return;
+          this._pending.delete(id);
+          clearTimeout(p.timer);
+          reject(e);
+        });
+    });
+  }
+}
+
 class WebContentsShim extends EventEmitter {
   constructor(winId, store, rpc) {
     super();
     this.id = winId;
     this._store = store;
     this._rpc = rpc;
+    this.debugger = new DebuggerShim(winId, rpc);
     // store 分发的 webContents 事件 → 本 EventEmitter
     store.onWC(winId, 'did-finish-load', (p) => this.emit('did-finish-load', p));
     store.onWC(winId, 'did-resize', (p) => this.emit('did-resize', p));
@@ -46,8 +95,8 @@ class WebContentsShim extends EventEmitter {
     return this._rpc.call('web:executeJavaScript', { winId: this.id, code });
   }
 
-  openDevTools() { this._rpc.notify('web:openDevTools', { winId: this.id }); }
-  closeDevTools() { /* 降级：host 侧未实现独立关闭 */ }
+  openDevTools() { return this._rpc.call('web:openDevTools', { winId: this.id }); }
+  closeDevTools() { return this._rpc.call('web:closeDevTools', { winId: this.id }); }
 }
 
 class BrowserWindow extends EventEmitter {

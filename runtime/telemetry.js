@@ -20,6 +20,16 @@ const os = require('os');
 const crypto = require('crypto');
 
 const SCHEMA = 1;
+
+/** Wilson 95% 置信区间下界（小样本比正态近似可靠） */
+function wilsonLower(successes, total, z = 1.96) {
+  if (!total) return 0;
+  const p = successes / total;
+  const denom = 1 + z * z / total;
+  const center = p + z * z / (2 * total);
+  const margin = z * Math.sqrt(p * (1 - p) / total + z * z / (4 * total * total));
+  return +Math.max(0, (center - margin) / denom * 100).toFixed(1);
+}
 const DEFAULT_DIR = path.join(os.homedir(), '.elecmini', 'telemetry');
 const FILE = 'gate-paths.jsonl';
 
@@ -60,6 +70,8 @@ function record(event, fields = {}, opts = {}) {
       engine: fields.engine || null,
       version: fields.version || null,
       reason: sanitizeReason(fields.reason),
+      source: fields.source || null,
+      pass: typeof fields.pass === 'boolean' ? fields.pass : null,
       platform: process.platform,
       arch: process.arch,
       appVersion: fields.appVersion || null,
@@ -124,17 +136,29 @@ function summarize(opts = {}) {
   const byLevel = {};
   const byReason = {};
   const byPlatform = {};
+  const byEngine = {};
+  const byVersion = {};
   for (const e of results) {
     const lv = e.level || 'unknown';
     byLevel[lv] = (byLevel[lv] || 0) + 1;
     if (e.reason && e.reason !== 'ok') byReason[e.reason] = (byReason[e.reason] || 0) + 1;
     const pk = `${e.platform}/${e.arch}`;
     byPlatform[pk] = (byPlatform[pk] || 0) + 1;
+    if (e.engine) byEngine[e.engine] = (byEngine[e.engine] || 0) + 1;
+    if (e.version) byVersion[e.version] = (byVersion[e.version] || 0) + 1;
   }
   const l0 = (byLevel['L0'] || 0) + (byLevel['L1→L0'] || 0);
   const l0Rate = total ? +(l0 / total * 100).toFixed(1) : 0;
   const l12 = (byLevel['L1'] || 0) + (byLevel['L2'] || 0);
   const l12Rate = total ? +(l12 / total * 100).toFixed(1) : 0;
+  const target = opts.targetPercent != null ? opts.targetPercent : +(process.env.ELECMINI_L0_TARGET || 95);
+  const minSamples = opts.minSamples != null ? opts.minSamples : +(process.env.ELECMINI_MIN_SAMPLES || 385);
+  const lower = wilsonLower(l0, total);
+  const observedMeetsTarget = total > 0 && l0Rate >= target;
+  const sampleAdequate = total >= minSamples;
+  const verdict = !sampleAdequate ? 'INSUFFICIENT_DATA'
+    : (observedMeetsTarget && lower >= target ? 'PASS'
+      : observedMeetsTarget ? 'INCONCLUSIVE' : 'FAIL');
   return {
     schema: SCHEMA,
     generatedAt: new Date().toISOString(),
@@ -142,8 +166,29 @@ function summarize(opts = {}) {
     byLevel,
     byReason,
     byPlatform,
-    l0Coverage: { count: l0, percent: l0Rate },
+    byEngine,
+    byVersion,
+    l0Coverage: {
+      count: l0,
+      percent: l0Rate,
+      ci95LowerPercent: lower,
+      targetPercent: target,
+      minSamples,
+    },
     l12Share: { count: l12, percent: l12Rate },
+    // Go/No-Go 第 4 条：L0 覆盖率 ≥95%。小样本不做结论，避免"95% 来自 20 台机器"
+    goNoGo: {
+      observedMeetsTarget,
+      sampleAdequate,
+      verdict,
+      note: verdict === 'INSUFFICIENT_DATA'
+        ? `样本不足（${total}/${minSamples}），需继续采集生产遥测`
+        : verdict === 'PASS'
+          ? '观测值与 95% 置信下界均达目标'
+          : verdict === 'INCONCLUSIVE'
+            ? '观测值达标但置信下界未达目标，需扩充样本'
+            : 'L0 覆盖率未达目标，需评估 Full SKU 或收窄系统支持范围',
+    },
     // 盈亏平衡：L1/L2 占比超过阈值则需保留 Full SKU（默认 15%，文档 R14）
     breakEven: {
       thresholdPercent: opts.breakEvenPercent != null ? opts.breakEvenPercent : +(process.env.ELECMINI_BREAK_EVEN || 15),
@@ -164,6 +209,6 @@ function writeReport(outFile, opts = {}) {
 
 module.exports = {
   isEnabled, telemetryDir, filePath, newSession,
-  record, readAll, summarize, writeReport, sanitizeReason,
+  record, readAll, summarize, writeReport, sanitizeReason, wilsonLower,
   SCHEMA, REASON_WHITELIST,
 };

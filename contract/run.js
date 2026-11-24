@@ -18,7 +18,7 @@ const { spawn, spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 const PROBE = path.join(__dirname, 'probe-app');
 const RESULTS = path.join(__dirname, 'results');
-const ELECTRON_BIN = path.join(ROOT, 'test-app/node_modules/electron/dist/electron');
+const ELECTRON_BIN = path.join(ROOT, 'test-app/node_modules/electron/dist/electron' + (process.platform === 'win32' ? '.exe' : ''));
 const LAUNCHER = path.join(ROOT, 'runtime/launcher.js');
 
 function parseArgs(argv) {
@@ -36,6 +36,8 @@ function runSide(side) {
     CONTRACT_RUNTIME: side,
     ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
   };
+  // 宿主（IDE/桌面端）常注入 ELECTRON_RUN_AS_NODE=1，会让 Electron 退化为纯 Node。
+  delete env.ELECTRON_RUN_AS_NODE;
 
   let cmd, args;
   if (side === 'electron') {

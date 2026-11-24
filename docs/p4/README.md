@@ -22,6 +22,7 @@
 - **无 PII**：只记录 level / engine / version / 原因**类别标签** / 平台 / 架构 / 匿名 session；原始中文 reason 经白名单脱敏（如"安装失败"→`install_failed`），PII 字符串归为 `other`。测试断言落盘数据不含任何原始个人信息。
 - **埋点**：与 `gate-flow.js` 集成，decide/install/verify/guide/result 各阶段记录；`gate:result` 为每条启动的唯一结果计数（L1→L0 计入 L0 覆盖）。
 - **盈亏平衡**：L1/L2 占比 > 阈值（默认 15%，`ELECMINI_BREAK_EVEN` 可配）→ 判定需保留 Full SKU（文档 R14）。
+- **L0 覆盖率判定（Go/No-Go 第 4 条）**：`gate:result` 现带上 `engine`/`version`/`source`；`pack/telemetry-report.js` 汇总 L0 与 L1→L0，输出观测值、Wilson 95% 置信下界、平台/引擎/版本分布，并按 `ELECMINI_L0_TARGET`（默认 95）/ `ELECMINI_MIN_SAMPLES`（默认 385，±5% 抽样）给出 `PASS / INCONCLUSIVE / FAIL / INSUFFICIENT_DATA` 判定。样本不足时**不做结论**，避免"20 台机器算出 95%"的误判。
 
 ### 2.2 渲染兼容基线（P4-B，文档 3.5.2）
 - 三平台最低要求锚定文档：**Windows WebView2≥120 / macOS 12+ / Linux WebKitGTK≥2.40**；browserslist 交集取保守值（chrome≥120 / safari≥16 / firefox≥115）。
@@ -60,7 +61,7 @@
 
 ## 四、需要你知道的限制
 
-1. **真实用户数据缺失**：门禁 L1/L2 的真实占比、L0 覆盖率需生产遥测回填；本报告的分布报告为 100 样本模拟数据，用于验证统计与盈亏平衡逻辑，非真实结论。前置阻塞项（文档 11.2 真实目标应用未指定）仍在。
+1. **采集机制已闭环，真实用户数据仍缺失**：Windows 真机已跑通「埋点 → JSONL → 聚合 → Go/No-Go」全链路（本地 7 样本，含 1 条真实 WebView2 133 的 L0、6 条注入分支；报告见 `D:\work\qwen\elecmini-acceptance\gate-distribution-report.json`）。该样本量远低于 385，**不构成 L0 ≥95% 的结论**；`docs/p4/gate-distribution-report.json` 仍是 100 样本模拟数据，仅验证统计逻辑。生产启用方式：随 SKU 下发 `ELECMINI_TELEMETRY=1`（企业可设 `=0` 强制关闭），集中收集各机 `~/.elecmini/telemetry/gate-paths.jsonl` 后运行聚合器。前置阻塞项（文档 11.2 真实目标应用未指定）仍在。
 2. **三引擎截图对比未实跑**：仅 Chromium 内核环境；WebView2/WKWebView 需真实平台采集，框架与阈值判定已就绪。
 3. **CI 覆盖的是能力基线**（特性探测），非真实最低版本机器；后者需在 ubuntu-22.04 / Win10 / macOS12 实体或 VM 上补跑。
 
@@ -70,7 +71,9 @@
 cd /workspace/elecmini
 bash ci/check.sh              # 全套 11 项
 bash ci/check.sh --quick      # 快速（跳过编译/E2E/差分）
-node pack/telemetry.test.js   # 遥测闭环
+node pack/telemetry.test.js   # 遥测闭环（28 断言，含 L0 判定）
+# 生产遥测聚合（JSONL → L0 覆盖率 + Go/No-Go）
+node pack/telemetry-report.js --dir ~/.elecmini/telemetry --out docs/p4/gate-distribution-report.json
 node compat/check.js --self-test && node compat/check.js --browser chromium
 node visual/capture.js --role baseline --browser chromium --out visual/baselines/critical-chromium.png
 python3 visual/compare.py --a visual/baselines/critical-chromium.png --b visual/candidates/critical-chromium.png

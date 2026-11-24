@@ -1,0 +1,7 @@
+{
+  "name": "elecmini-test-app-s4",
+  "version": "0.1.0",
+  "private": true,
+  "description": "S4 WebView2 专属能力端到端验收应用",
+  "main": "main.js"
+}

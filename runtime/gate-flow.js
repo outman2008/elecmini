@@ -113,7 +113,12 @@ function run(opts = {}) {
 
   // 统一的结果埋点：pass + 最终 level（L1→L0 计入 L0 覆盖）
   const finish = (pass, level, extra = {}) => {
-    emit('gate:result', { pass, level, ...extra });
+    // L0 覆盖率分析需要知道最终结果的来源与 WebView 版本（L1→L0 尤其关键）
+    emit('gate:result', {
+      pass, level,
+      engine: decision.engine, version: decision.version, source: decision.source,
+      ...extra,
+    });
     return { pass, level, steps };
   };
 

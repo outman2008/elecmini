@@ -79,6 +79,17 @@ const outFile = path.join(tmp, 'report.json');
 const written = t.writeReport(outFile, { dir: tmp });
 check('报告写文件成功', fs.existsSync(outFile) && written.total === 6);
 
+// 7b) L0 覆盖率的统计判定（Go/No-Go 第 4 条）
+check('维度下钻：byEngine 有数据', Object.keys(rep.byEngine).length > 0);
+check('维度下钻：byVersion 字段存在', !!rep.byVersion && typeof rep.byVersion === 'object');
+check('覆盖率置信下界不超过观测值', rep.l0Coverage.ci95LowerPercent <= rep.l0Coverage.percent);
+check('样本不足时不下结论', rep.goNoGo.verdict === 'INSUFFICIENT_DATA');
+check('样本充足但置信不足 → INCONCLUSIVE',
+  t.summarize({ dir: tmp, minSamples: 1, targetPercent: 40 }).goNoGo.verdict === 'INCONCLUSIVE');
+check('观测值与下界均达标 → PASS',
+  t.summarize({ dir: tmp, minSamples: 1, targetPercent: 10 }).goNoGo.verdict === 'PASS');
+check('Wilson 下界（95/100）合理', t.wilsonLower(95, 100) > 85 && t.wilsonLower(95, 100) < 95);
+
 // 恢复环境变量
 if (savedDecision === undefined) delete process.env.ELECMINI_GATE_DECISION; else process.env.ELECMINI_GATE_DECISION = savedDecision;
 if (savedInstall === undefined) delete process.env.ELECMINI_GATE_INSTALL; else process.env.ELECMINI_GATE_INSTALL = savedInstall;

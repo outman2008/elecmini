@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ElecMini S4 Target</title>
+</head>
+<body>
+  <h1>ElecMini S4 — WebView2 专属能力</h1>
+  <pre id="out">waiting...</pre>
+  <script>
+    var out = document.getElementById('out');
+    function log(tag, obj) {
+      var text = tag + '=' + JSON.stringify(obj);
+      out.textContent += '\n' + text;
+      if (window.electronAPI) window.electronAPI.log(text);
+    }
+    log('S4_PAGE_READY', { ua: navigator.userAgent });
+    fetch('/__s4_echo', { headers: { 'X-From-Page': 'page' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var h = data.headers || {};
+        log('S4_ECHO', {
+          injected: h['x-elecmini-s4'] || null,
+          fromPage: h['x-from-page'] || null,
+        });
+      })
+      .catch(function (e) { log('S4_ECHO', { error: String(e) }); });
+  </script>
+</body>
+</html>

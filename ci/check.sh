@@ -58,6 +58,11 @@ if [ "$QUICK" -eq 0 ]; then
   else
     echo "[SKIP] E2E/差分契约：无 xvfb-run"
   fi
+
+  # Windows 原生：S4 WebView2 专属能力（请求拦截 / CDP / DevTools）
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == mingw* ]]; then
+    run "S4 WebView2 能力" node contract/s4-check.js
+  fi
 else
   echo "[SKIP] --quick 模式跳过编译/E2E/差分契约"
 fi

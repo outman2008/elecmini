@@ -8,7 +8,24 @@
  * Windows L1/L2（Bootstrapper 引导）为 P3 范围，这里返回明确的路径决策。
  */
 
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+/** 查找 Windows 门禁探测器 win_gate.exe（源码构建 / 打包产物 / 环境变量覆盖） */
+function findWinGate() {
+  if (process.env.ELECMINI_GATE_BIN && fs.existsSync(process.env.ELECMINI_GATE_BIN)) {
+    return process.env.ELECMINI_GATE_BIN;
+  }
+  const hostBin = process.env.ELECMINI_HOST;
+  const candidates = [
+    hostBin ? path.join(path.dirname(hostBin), 'win_gate.exe') : null,
+    path.resolve(__dirname, '../bin/win_gate.exe'),
+    path.resolve(__dirname, '../target/release/win_gate.exe'),
+    path.resolve(__dirname, '../target/debug/win_gate.exe'),
+  ].filter(Boolean);
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
 
 function detectVersion(platform = process.platform) {
   if (platform === 'linux') {
@@ -30,14 +47,48 @@ function detectVersion(platform = process.platform) {
     }
   }
   if (platform === 'win32') {
-    // Windows 版本探测由 host 侧 win_gate 完成（注册表 + API 复核）。
-    // P1 返回 unknown，由 host 决策 L0/L1/L2；这里只做环境变量测试注入。
+    // Windows 必须真正调用 win_gate.exe（注册表 + API 复核），
+    // 不能在探测不到时盲目返回 L0——否则 WebView2 缺失时直接启动会白屏。
     const testPv = process.env.ELECMINI_TEST_PV;
-    if (testPv) {
+    if (testPv !== undefined) {
       const major = parseInt(testPv.split('.')[0], 10);
-      return { ok: major >= 120, version: testPv, engine: 'WebView2' };
+      return { ok: major >= 120, version: testPv || null, engine: 'WebView2' };
     }
-    return { ok: true, version: null, engine: 'WebView2', deferredToHost: true };
+    const gateBin = findWinGate();
+    if (gateBin) {
+      try {
+        const r = spawnSync(gateBin, [], {
+          encoding: 'utf8', timeout: 8000, windowsHide: true,
+          env: { ...process.env },
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        const m = out.match(/DECISION\]\s*(L[0-3])/);
+        const pv = out.match(/registry pv = Some\("([^"]+)"\)/);
+        if (m) {
+          const level = m[1];
+          return {
+            ok: level === 'L0', level, version: pv ? pv[1] : null,
+            engine: 'WebView2', source: 'win_gate',
+            reason: `win_gate.exe 判定 ${level}`,
+          };
+        }
+      } catch (_) { /* win_gate 调用失败 → 回退注册表直读 */ }
+    }
+    // 回退：直接用 reg.exe 读注册表（打包产物可能未带 win_gate.exe）
+    try {
+      const CLSID = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+      const key = `HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\${CLSID}`;
+      const r = spawnSync('reg', ['query', key, '/v', 'pv'], {
+        encoding: 'utf8', timeout: 5000, windowsHide: true,
+      });
+      const m = (r.stdout || '').match(/pv\s+REG_SZ\s+(\d+\.\d+\.\d+\.\d+)/i);
+      if (m) {
+        const ver = m[1];
+        return { ok: parseInt(ver.split('.')[0], 10) >= 120, version: ver, engine: 'WebView2', source: 'registry' };
+      }
+    } catch (_) { /* 注册表不可读 */ }
+    // 无法确认版本 → 不能假定满足基线，走 L1 引导安装
+    return { ok: false, version: null, engine: 'WebView2', source: 'unknown', reason: '无法探测 WebView2 版本' };
   }
   return { ok: false, version: null, engine: 'unknown' };
 }
@@ -52,8 +103,12 @@ function probe() {
     return { level: 'L3', reason: 'ELECMINI_GATE=block（测试注入）', engine: 'N/A', version: null };
   }
   const d = detectVersion();
+  // win_gate.exe 直接给出 L0/L1/L2 决策，优先采用
+  if (d.level) {
+    return { level: d.level, reason: d.reason || '系统 WebView 满足基线', engine: d.engine, version: d.version, source: d.source };
+  }
   if (d.deferredToHost) {
-    return { level: 'L0', reason: 'Windows 版本判定委托 host（P3 实现 L1/L2）', engine: d.engine, version: d.version };
+    return { level: 'L0', reason: 'Windows 版本判定委托 host', engine: d.engine, version: d.version };
   }
   if (!d.ok) {
     const level = process.platform === 'win32' ? 'L1' : 'L3';

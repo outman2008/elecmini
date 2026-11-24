@@ -9,10 +9,19 @@ const ctx = require('../context');
 function makeWebRequest() {
   const listeners = { onBeforeRequest: [], onHeadersReceived: [], onCompleted: [] };
   return {
-    onBeforeRequest(filter, cb) {
+    // Electron 签名：onBeforeRequest([filter], listener)。
+    // ElecMini 扩展：第三参 options.headers 会在 Windows 上经 WebResourceRequested 同步注入请求头。
+    onBeforeRequest(filter, cb, options) {
       const fn = typeof filter === 'function' ? filter : cb;
+      const opts = typeof filter === 'object' ? (options || {}) : (cb && typeof cb === 'object' ? cb : (options || {}));
       listeners.onBeforeRequest.push(fn);
-      ctx.get().rpc.notify('webRequest:subscribe', { type: 'onBeforeRequest', filter: typeof filter === 'object' ? filter : null });
+      const urls = typeof filter === 'object' && filter && filter.urls;
+      ctx.get().rpc.notify('webRequest:subscribe', {
+        type: 'onBeforeRequest',
+        filter: typeof filter === 'object' ? filter : null,
+        pattern: (urls && urls[0]) || opts.pattern || '*',
+        headers: opts.headers || null,
+      });
       return fn;
     },
     onHeadersReceived(filter, cb) {
@@ -44,7 +53,8 @@ const session = {
 /** host 推送拦截事件 → 调用 JS listener */
 function bindSessionEvents(rpc) {
   if (!rpc || typeof rpc.on !== 'function') return;
-  rpc.on('webRequest:beforeRequest', (details) => {
+  rpc.on('webRequest:beforeRequest', (msg) => {
+    const details = msg.details || msg;
     const ls = session.defaultSession.webRequest._listeners.onBeforeRequest;
     let canceled = false;
     for (const fn of ls) {

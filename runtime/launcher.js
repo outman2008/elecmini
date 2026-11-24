@@ -130,6 +130,15 @@ async function main() {
     process.stderr.write('[ELECMINI] host ready + initScript 注入完成，加载目标应用...\n');
   });
 
+  // S4 验收：打印 host 实际能力（WebResourceRequested / CDP / DevTools）
+  if (process.env.ELECMINI_S4) {
+    rpc.once('host:ready', () => {
+      rpc.call('s4:capabilities', {}).then((caps) => {
+        process.stderr.write(`[ELECMINI:S4] capabilities=${JSON.stringify(caps)}\n`);
+      }).catch((e) => process.stderr.write(`[ELECMINI:S4] capabilities error=${e.message}\n`));
+    });
+  }
+
   // host 退出 → sidecar 退出
   rpc.on('exit', ({ code }) => {
     Module._load = origLoad;

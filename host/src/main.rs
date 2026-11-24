@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 
+mod s4;
+
 use serde_json::{json, Value};
 use wry::http::{Request as HttpRequest, Response as HttpResponse};
 use tao::{
@@ -295,6 +297,7 @@ fn main() {
     let mut init_script: String = String::new();
     let mut quitting = false;
     let mut protocols: HashMap<String, ProtocolDef> = HashMap::new(); // P2-B
+    let s4state: Arc<Mutex<s4::S4State>> = Arc::new(Mutex::new(s4::S4State::default())); // S4
 
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -479,11 +482,49 @@ fn main() {
                         "systemPreferences:setUserDefault" => {
                             if !notify { respond(&out, id, json!({ "ok": true })); }
                         }
+                        // ===== S4：Windows WebView2 专属能力 =====
+                        "s4:capabilities" => {
+                            if !notify { respond(&out, id, s4::capabilities()); }
+                        }
                         "webRequest:subscribe" => {
-                            // Linux 无 WebResourceRequested；记录订阅，返回能力标注
-                            if !notify { respond(&out, id, json!({ "ok": true, "supported": false, "reason": "Linux 走自定义协议拦截" })); }
+                            // Windows 注册 WebResourceRequested 规则；其他平台明确降级
+                            let r = s4::subscribe_request(&s4state, &params);
+                            if !notify { respond(&out, id, r); }
                         }
                         "webRequest:decision" => { /* best-effort, no response */ }
+                        "cdp:sendCommand" => {
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let cmd_id = params.get("id").cloned().unwrap_or(json!(null));
+                            let method = params.get("method").and_then(Value::as_str).unwrap_or("").to_string();
+                            let cmd_params = params.get("params").cloned().unwrap_or(json!({}));
+                            let accepted = webviews.get(&win_id).and_then(|w| {
+                                s4::cdp_send(w, out.clone(), cmd_id.clone(), method.clone(), cmd_params.clone()).ok()
+                            }).is_some();
+                            if !accepted {
+                                emit(&out, &json!({
+                                    "event": "cdp:result", "id": cmd_id, "ok": false,
+                                    "error": "CDP 不可用：目标窗口不存在或平台不支持（S4 仅 Windows WebView2）"
+                                }));
+                            }
+                            if !notify { respond(&out, id, json!({ "accepted": accepted })); }
+                        }
+                        "cdp:subscribe" => {
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let event_name = params.get("eventName").and_then(Value::as_str).unwrap_or("").to_string();
+                            let ok = webviews.get(&win_id).and_then(|w| {
+                                s4::cdp_subscribe(w, out.clone(), &s4state, win_id, event_name.clone()).ok()
+                            }).is_some();
+                            if !notify { respond(&out, id, json!({ "ok": ok, "eventName": event_name })); }
+                        }
+                        "web:openDevTools" => {
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let ok = webviews.get(&win_id).and_then(|w| s4::open_devtools(w).ok()).is_some();
+                            if !notify { respond(&out, id, json!({ "ok": ok })); }
+                        }
+                        "web:closeDevTools" => {
+                            // WebView2 无独立关闭 API；DevTools 窗口由用户关闭
+                            if !notify { respond(&out, id, json!({ "ok": false, "reason": "WebView2 DevTools 需用户手动关闭" })); }
+                        }
                         "session:clearCache" | "session:setProxy" | "session:resolveProxy" => {
                             if !notify { respond(&out, id, json!({ "ok": true, "proxy": "DIRECT" })); }
                         }
@@ -535,6 +576,10 @@ fn main() {
                                 .build(&window)
                                 .expect("failed to build webview");
 
+                            // S4：在首次导航前安装 WebView2 请求拦截钩子（Windows 生效）
+                            if let Err(e) = s4::install_request_hook(&webview, out.clone(), s4state.clone(), win_id) {
+                                eprintln!("[S4] WebResourceRequested 未安装：{}", e);
+                            }
                             webviews.insert(win_id, webview);
                             windows.insert(win_id, window);
 

@@ -47,6 +47,12 @@ function createWindow() {
         "window.electronAPI.echoTypes({map:new Map([['k',7]]),date:new Date('2021-03-04'),arr:[1,'x']}).then(function(r){" +
         "window.electronAPI.log('TYPES_RESULT=' + JSON.stringify({map:Array.from(r.map.entries()),date:r.date,arr:r.arr}));});"
       ).then(() => console.log('[P1-TARGET] autotest injected'));
+
+      // 自动验收：IPC 往返 + 窗口事件断言完成后主动退出，不再依赖外部 timeout 强杀
+      setTimeout(() => {
+        console.log('[P1-TARGET] autotest done, quitting');
+        app.quit();
+      }, 2500);
     }
   });
 

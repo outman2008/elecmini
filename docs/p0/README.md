@@ -28,7 +28,7 @@
 | **S1** | 宿主模型：tao 主线程 + sidecar 并发 | ✅ 通过 | 窗口创建后事件循环持续运行无丢帧；worker 线程并发请求被及时响应（S2 佐证） |
 | **S2** | 同步 API：getBounds() 同步返回真实值 | ✅ 通过 | `target/release/s2_sync`：worker 经 EventLoopProxy 同步请求，拿到主线程 resize 后的真实值 (640,480)，无死锁 |
 | **S3** | preload + IPC 往返 + 类型封装 | ✅ 通过 | 端到端 `invoke('ping')` 往返成功，Buffer 封装 `b=ZWxlY21pbmk=`（base64 "elecmini"）；类型单测 7/7 通过 |
-| **S4** | Windows WebView2 能力探底 | 🟡 部分通过 | wine 交叉编译链路 ✅（host.exe 3.8MB）；渲染层 ❌ wine 9/10 均装不上 WebView2（EdgeUpdate `0x80040708`，需真实 Win10，见 `windows-verification.md`） |
+| **S4** | Windows WebView2 能力探底 | ✅ Windows 真机通过（2026-11-24 补验） | 本机 WebView2 133：`WebResourceRequested` 改请求头（`/__s4_echo` 回显 `X-ElecMini-S4=s4-ok`）、CDP 命令（`Runtime.evaluate=2`）+ 事件（`Runtime.consoleAPICalled`）、`OpenDevToolsWindow`（`ok=true`）全部实测通过；自动验收 `node contract/s4-check.js` = 7/7 |
 | **S5** | 指标实测 | ✅ 完成 | 见第三节；发现内存收益未达预期 |
 | **S6** | API 调用点 AST 扫描 | ✅ 通过 | `scan-api.js` 跑通，产出 `api-call-sites.json`，按调用点归类（已修正方法名归属 bug） |
 | **S7** | 路线选型 B1/B2 | ✅ 倾向 B2 | B2 复用 Tauri 打包/签名/更新，Rust 工作量小；IPC 一跳延迟未成为瓶颈（见第六节） |
@@ -149,7 +149,7 @@ cd shim && node src/ipc-types.test.js && node src/scan-api.js --project ../test-
 | 目标应用未指定 | 🔴 阻塞 | 文档 11.2 第 1 项：没有它，差异报告与最低版本基线无法定稿。当前 S6 用的是示例应用 |
 | L0 覆盖率 ≥95% | ⏳ 待评估 | 需目标用户系统版本分布数据（Go/No-Go 第 4 条） |
 | 内存收益不成立 | 🔴 需重新立项判断 | PSS 复测反超 Electron 7%，若核心 KPI 含省内存应 No-Go 或转 Neutralino 浏览器模式 |
-| S4 Windows 能力 | 🟡 编译层通过，渲染层待验证 | wine 交叉编译成功；渲染能力需真实 Win10 + WebView2 跑脚本（wine 9/10 均装不上 WebView2，EdgeUpdate `0x80040708`，见 `windows-verification.md`） |
+| S4 Windows 能力 | ✅ 真机通过 | WebView2 133 上三项能力全部实测通过（见第一节 S4 证据）；wine 阶段的历史限制已由 Windows 真机补验覆盖 |
 | S8 L1/L2 | 🟡 逻辑层通过，UI 层待验证 | wine 实测 6 用例决策+退出码全对；真实引导安装/UI 呈现需干净 Win10 虚机 |
 | evaluate_script_with_callback 回调 | 🟡 观察 | WebKitGTK 上本次未回调（不影响 IPC 主结论），P1 需确认 |
 
@@ -157,9 +157,9 @@ cd shim && node src/ipc-types.test.js && node src/scan-api.js --project ../test-
 
 ## 八、S4 / S8-L1-L2 待 Windows 验证的验收脚本清单
 
-1. **WebResourceRequested 改请求头**：注入 JS fetch 到跨域地址，宿主侧 `AddWebResourceRequestedFilter` + 事件回调改 header，断言请求被修改。
-2. **CDP**：`CallDevToolsProtocolMethod("Network.enable")` + 监听事件，断言可拿到网络事件。
-3. **DevTools**：`OpenDevToolsWindow()` 断言窗口打开。
+1. **WebResourceRequested 改请求头**：✅ 已实测。宿主 `AddWebResourceRequestedFilter("*")` + handler 注入 `X-ElecMini-S4=s4-ok`，渲染层 `fetch('/__s4_echo')` 回显确认（`test-app-s4/index.html`）。
+2. **CDP**：✅ 已实测。`Runtime.enable` + `CallDevToolsProtocolMethod("Runtime.evaluate")` 拿到 `value=2`；`GetDevToolsProtocolEventReceiver("Runtime.consoleAPICalled")` 收到事件。
+3. **DevTools**：✅ 已实测。`ELECMINI_S4_DEVTOOLS=1 node runtime/launcher.js test-app-s4` 返回 `devtools={"ok":true}`（`OpenDevToolsWindow` 调用成功；未做像素级窗口断言）。
 4. **Bootstrapper（L1）**：干净 Win10 虚机（无 WebView2）跑 Slim 包，断言自动安装 Evergreen 后进入 L0。
 5. **离线（L2）**：断网跑 Slim 包，断言给出清晰提示而非白屏。
 6. **组策略禁止**：设置组策略禁止安装，断言跳过 L1 直接 L2。
