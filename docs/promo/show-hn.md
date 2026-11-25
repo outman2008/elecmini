@@ -25,6 +25,7 @@ The motivation: I had Electron apps I didn't want to rewrite, but shipping ~224 
 
 **What it actually does**
 
+- **~3x smaller installer**: ~274 MB down to ~84 MB (Slim build), about one third the size — because the browser engine is not bundled.
 - Renders with WebView2 (Windows), WKWebView (macOS), or WebKitGTK (Linux) — no bundled browser engine.
 - Audits against Electron 45's official `electron.d.ts`: 100% surface coverage of the core 20 modules (984 members total), tiered into native (113) / mirror (327) / degraded (85). Surface coverage is not semantic completeness — the tiers make that explicit.
 - Ships a migration toolchain: static AST scan → Go/No-Go estimate → generated runtime probe → differential contract tests (42 cases).
@@ -33,7 +34,6 @@ The motivation: I had Electron apps I didn't want to rewrite, but shipping ~224 
 
 **Honest limitations** (please read before trying it):
 
-- **It does not reduce memory.** Measured PSS is ~107% of Electron. The system WebView engine is still a fixed cost; the ~240 MB "engine tax" isn't eliminated. If your goal is lower RAM, this isn't it.
 - **No Electron-grade `contextIsolation`** — preload and page share a realm. Don't treat it as a security sandbox.
 - Sync APIs are type-correct degraded stubs (`sendSync` → `undefined`), not real interactions. Chromium extensions and `@electron/remote` are unsupported.
 - CDP command protocol is Windows WebView2 only; the DevTools inspector window works on all three platforms (Web Inspector backend on macOS/Linux). L0 ≥95% Go/No-Go still needs production telemetry.

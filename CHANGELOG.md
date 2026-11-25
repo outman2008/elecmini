@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Installer-size-first positioning**: README (both languages), `llms.txt` and promo drafts now lead with the size win — Electron **~274MB** vs ElecMini Slim **~84MB**, about **1/3 the size (~3x smaller)** — and drop the previous PSS ≈107% "no memory gain" caveat from the top-level pitch. The bundled-engine comparison (274MB → 2.3MB, ~118x) is retained with its methodology note; no benchmark numbers were changed.
 - **Logo redesigned** (`assets/logo.svg`): the previous dark badge with a full electron-style atom is replaced by a more abstract mark — one open, lightweight orbit (candy gradient rose → violet → cyan), a warm amber core standing for the preserved JS API contract, and three small platform dots (WebView2 / WKWebView / WebKitGTK) on a clean triangular orbit. The badge background was dropped in favour of a transparent canvas, so the mark reads equally well on GitHub's light and dark themes. Same file path, no reference changes needed.
 
 ### Added

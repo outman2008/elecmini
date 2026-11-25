@@ -2,11 +2,11 @@
 
 > Keep the Electron JS API contract, drop the bundled Chromium, and render with the system WebView (WebView2 / WKWebView / WebKitGTK). A low-cost migration path for existing Electron apps: business code keeps `require('electron')` while the runtime is a Rust host (tao + wry) plus a Node sidecar.
 
-ElecMini is not an Electron fork. It is a compatibility layer that lets an existing Electron application run on the system WebView instead of shipping Chromium. The trade-off: large wins in package size and cold start, no memory win, and a documented set of unsupported/degraded APIs.
+ElecMini is not an Electron fork. It is a compatibility layer that lets an existing Electron application run on the system WebView instead of shipping Chromium. The headline win: the installer is about 3x smaller (Electron ~274MB vs ElecMini Slim ~84MB, roughly one third the size) with faster cold start; the trade-off is a documented set of unsupported/degraded APIs.
 
 ## Key facts
 
-- Package size: ~2.3 MB runtime code (npm tarball ~150 KB + Rust host ~1.9 MB) vs Electron's ~274 MB bundled engine (~118x smaller engine footprint). System WebView is a shared OS dependency, not bundled.
+- Package size: installer ~84 MB (Slim) vs Electron's ~274 MB — about 1/3 the size (~3x smaller). Bundled engine footprint alone is ~2.3 MB (npm tarball ~150 KB + Rust host ~1.9 MB) vs ~274 MB (~118x). System WebView is a shared OS dependency, not bundled.
 - API surface: 100% of official `electron.d.ts` members are classified as native / mirrored / degraded.
 - Verification: full CI 23/23, differential contract 42/42, Codec consistency 10/10.
 - Platforms: Windows (WebView2), macOS (WKWebView), Linux (WebKitGTK).

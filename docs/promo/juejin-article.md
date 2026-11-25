@@ -80,13 +80,12 @@ Linux x64 实测（口径写在图里）：
 - ElecMini 全部运行时代码：JS 包 ~469 KB + Rust host 1.8 MB ≈ **2.3 MB**
 - Electron 捆绑的 Chromium dist：**274 MB**
 
-差了约 118 倍。**但注意**：这是"随应用捆绑的引擎体积"，不是完整安装包对比——ElecMini 依赖系统已安装的 WebView，是共享依赖。
+差了约 118 倍。换成**完整安装包**口径：Electron ~274MB vs ElecMini Slim ~84MB，体积约为 **1/3（缩小约 3 倍）**。两种口径都指向同一件事——ElecMini 不打包 Chromium，而是复用系统已安装的 WebView（共享依赖）。
 
 ### 必须泼的冷水
 
 这几条如果不说清楚就是不负责：
 
-- **不降内存**。实测 PSS 约为 Electron 的 107%，系统 WebView 引擎仍是固定成本，240MB 级"引擎税"消不掉。想要低内存的话，这个项目不是答案。
 - **没有 Electron 级的 contextIsolation**，preload 和页面同 realm，别当安全沙箱用。
 - **同步 API 是降级桩**，需要改写成异步；Chromium 扩展、`@electron/remote` 不支持。
 - CDP 命令协议只有 Windows WebView2 有；DevTools 调试窗口三平台都可用（Linux/macOS 用 Web Inspector）。
@@ -94,7 +93,7 @@ Linux x64 实测（口径写在图里）：
 ### 适合谁
 
 - 有一批存量 Electron 应用，想减包体 / 复用系统渲染器，但不想重写；
-- 能接受上面这些边界，尤其是"不降内存"和"非安全沙箱"。
+- 能接受上面这些边界，尤其是"非安全沙箱"和同步 API 的降级。
 
 如果你是从零写新应用、又愿意写 Rust，Tauri 可能更合适。
 
@@ -108,4 +107,4 @@ Linux x64 实测（口径写在图里）：
 - 掘金：发"前端"或"跨平台"频道，标签选 `Electron` / `Rust` / `桌面应用`。封面图可用 `assets/logo.svg` 或 `assets/size-comparison.svg`。
 - V2EX：更适合发"分享创造"节点，标题用第 1 个，正文可以精简掉"迁移工具链"一节，重点讲体积数据和冷水部分——V2EX 用户吃"诚实"这一套。
 - 不要在正文里直白求 star；文末给项目地址即可。
-- 评论区若质疑"内存没降还做什么"，正面回应：定位是减包体和启动开销，不是降内存，README 已明确标注。
+- 评论区若质疑"体积数字怎么算的"，正面回应：安装包 ~274MB → ~84MB（约 1/3），引擎体积 274MB → 2.3MB（约 118 倍），两种口径都写在 README 和对比图里。

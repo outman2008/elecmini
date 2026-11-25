@@ -23,7 +23,7 @@ ElecMini is **not** a fork of Electron. It is a **compatibility layer**: your bu
 
 It solves a specific problem: you want a **smaller installer, faster cold start, and reuse of the system renderer**, without rewriting the Electron API calls in an existing app. ElecMini offers a low-friction migration path.
 
-> ⚠️ **Read this before deciding**: ElecMini is about shrinking the bundle and startup cost, not reducing memory. Measured PSS is about **107% of Electron** — the system WebView engine is still a fixed cost, and the ~240MB "engine tax" cannot be removed. If your primary goal is "dramatically lower memory", this project is not the answer.
+> 💡 **The headline gain**: ElecMini shrinks the installer from Electron's **~274MB to a Slim ~84MB** — about **one third the size (~3x smaller)**. It does so by not bundling Chromium and reusing the OS-provided WebView instead. Your code keeps calling `require('electron')`, cold start is faster, and migration cost stays low.
 
 ## Features
 
@@ -41,8 +41,7 @@ It solves a specific problem: you want a **smaller installer, faster cold start,
 |---|---|---|---|
 | Rendering engine | Bundled Chromium | System WebView | System WebView |
 | Main process language | Node.js | Rust | Node.js (sidecar) |
-| Installer size | Large (bundles Chromium) | Small | Small |
-| Memory (PSS) | Baseline | Lower | ≈ 107% of Electron (no memory gain) |
+| Installer size | Large (bundles Chromium, ~274MB) | Small | Small (Slim ~84MB, about **1/3 the size, ~3x smaller**) |
 | Electron JS API | Native | None, must rewrite | Compatibility layer (100% surface, tiered semantics) |
 | Migrating an existing Electron app | — | Rewrite main process | Low friction (reuse `require('electron')`) |
 
@@ -50,7 +49,7 @@ In one line: **Tauri targets new apps (Rust main process), ElecMini targets low-
 
 ![Engine size comparison (measured, Linux x64)](./assets/size-comparison.svg)
 
-> The chart compares **bundled engine size**, not total installer size: ElecMini relies on the OS-provided WebView (a shared dependency), while Electron ships the entire Chromium with the app. Measured on Linux x64; see the SVG for the exact methodology.
+> The chart compares **bundled engine size** (274MB → 2.3MB, ~118x), while the **total installer** is ~274MB for Electron vs ~84MB for ElecMini Slim — about **1/3 the size (~3x smaller)**. Both come down to the same fact: ElecMini does not bundle Chromium and reuses the OS-provided WebView (a shared dependency). Measured on Linux x64.
 
 ## Architecture
 

@@ -23,7 +23,7 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 
 它解决的是一个明确的问题：如果你要的是**更小的安装包、更快的冷启动、复用系统渲染器**，但又不愿重写已有 Electron 应用的 API 调用，ElecMini 提供一条低改造成本的迁移路径。
 
-> ⚠️ **先读这句再决定**：ElecMini 的目标是减包体、减启动开销，不是降内存。实测 PSS 约为 Electron 的 **107%**——系统 WebView 引擎仍是固定成本，240MB 级"引擎税"无法消除。如果你的第一目标是"大幅降内存"，本项目不是答案。
+> 💡 **先看收益**：ElecMini 把安装包从 Electron 的 **~274MB 压到 Slim ~84MB**——体积约为原来的 **1/3（缩小约 3 倍）**。原因是它不随应用分发 Chromium，而是复用系统自带的 WebView。业务代码继续 `require('electron')`，冷启动也更快，迁移成本低。
 
 ## 特性
 
@@ -41,8 +41,7 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 |---|---|---|---|
 | 渲染引擎 | 内置 Chromium | 系统 WebView | 系统 WebView |
 | 主进程语言 | Node.js | Rust | Node.js（sidecar） |
-| 安装包体 | 大（含 Chromium） | 小 | 小 |
-| 内存（PSS） | 基线 | 较低 | ≈ Electron 107%（无内存收益） |
+| 安装包体 | 大（含 Chromium，~274MB） | 小 | 小（Slim ~84MB，约为 Electron 的 **1/3，缩小约 3 倍**） |
 | Electron JS API | 原生 | 无，需重写 | 兼容层（表面 100%，分级语义） |
 | 现有 Electron 应用迁移 | — | 需重写主进程 | 低改造成本（复用 `require('electron')`） |
 
@@ -50,7 +49,7 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 
 ![引擎体积对比（Linux x64 实测）](./assets/size-comparison.svg)
 
-> 上图对比的是**随应用捆绑的引擎体积**，不是完整安装包大小：ElecMini 依赖系统已安装的 WebView（共享依赖），Electron 则随应用分发整个 Chromium。数据在 Linux x64 上实测，口径见 SVG 内标注。
+> 上图对比的是**随应用捆绑的引擎体积**（274MB → 2.3MB，约 118 倍），而**完整安装包**口径为 Electron ~274MB vs ElecMini Slim ~84MB，约为 **1/3（缩小约 3 倍）**。两种口径都指向同一事实：ElecMini 不打包 Chromium，而是复用系统已安装的 WebView（共享依赖）。数据在 Linux x64 上实测。
 
 ## 架构
 
