@@ -313,11 +313,18 @@ test('autoUpdater 增量下载：按当前版本选差分包并重建', async ()
   fs.writeFileSync(path.join(v3, 'new.txt'), 'fresh\n');
 
   const diff = delta.generateDirDelta(v1, v3, '1.0.0', '3.0.0');
-  const diffText = JSON.stringify(diff);
-  const diffSha = crypto.createHash('sha256').update(Buffer.from(diffText)).digest('hex');
+  const diffZip = delta.packDelta(diff);
+  const diffSha = crypto.createHash('sha256').update(diffZip).digest('hex');
   const release = update.generateRelease(v3, '3.0.0', 'slim');
   release.deltas = [
-    { fromVersion: '1.0.0', toVersion: '3.0.0', file: '3-1.diff', sha256: diffSha, bytes: diffText.length },
+    {
+      fromVersion: '1.0.0',
+      toVersion: '3.0.0',
+      file: '3-1.zip',
+      encoding: 'zip',
+      sha256: diffSha,
+      bytes: diffZip.length,
+    },
   ];
   // release.files[] 的 url 指向本地 v3 文件（transport 按 URL 返回内容）
   for (const f of release.files) f.url = 'file://' + path.join(v3, f.path);
@@ -332,7 +339,7 @@ test('autoUpdater 增量下载：按当前版本选差分包并重建', async ()
     u.setFeedURL('https://example.test/update.json');
     u._setTransport(async (url) => {
       if (url === 'https://example.test/update.json') return JSON.stringify(release);
-      if (url === 'https://example.test/3-1.diff') return diffText;
+      if (url === 'https://example.test/3-1.zip') return diffZip;
       if (url.startsWith('file://')) return fs.readFileSync(url.slice(7));
       throw new Error('unexpected url ' + url);
     });
@@ -384,6 +391,64 @@ test('autoUpdater 增量失败自动回退全量下载', async () => {
     await u.checkForUpdates();
     await u.downloadUpdate();
     assert.strictEqual(modes[0], 'full', '回退后应走全量下载');
+    assert.ok(fallbacks >= 1, '应发出 delta-fallback 事件');
+  } finally {
+    ctx.appDir = savedAppDir;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('autoUpdater zip 差分包 CRC 损坏时回退全量（sha256 通过但解压失败）', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const delta = require('../../pack/delta.js');
+  const update = require('../../pack/update.js');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const crypto = require('crypto');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-zip-crc-'));
+  fs.mkdirSync(path.join(tmp, 'app'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'app/main.js'), 'new\n');
+  const release = update.generateRelease(tmp, '2.0.0', 'slim');
+  for (const f of release.files) f.url = 'file://' + path.join(tmp, f.path);
+
+  // 构造 CRC 损坏但 sha256 匹配的 zip：翻转数据区一个字节，再用损坏后的字节算 sha256
+  const validZip = delta.packDelta({ format: 'elecmini-delta/1', files: [] });
+  const corrupt = Buffer.from(validZip);
+  const nameLen = corrupt.readUInt16LE(26);
+  corrupt[30 + nameLen] ^= 0xff;
+  const corruptSha = crypto.createHash('sha256').update(corrupt).digest('hex');
+  release.deltas = [
+    {
+      fromVersion: '1.0.0',
+      toVersion: '2.0.0',
+      file: '2-1.zip',
+      encoding: 'zip',
+      sha256: corruptSha,
+      bytes: corrupt.length,
+    },
+  ];
+
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = tmp;
+  let modes = [];
+  let fallbacks = 0;
+  try {
+    const u = new AutoUpdater();
+    u.currentVersion = '1.0.0';
+    u.setFeedURL('https://example.test/update.json');
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url === 'https://example.test/2-1.zip') return corrupt;
+      if (url.startsWith('file://')) return fs.readFileSync(url.slice(7));
+      throw new Error('unexpected url ' + url);
+    });
+    u.on('update-downloaded', (i) => modes.push(i.downloadMode));
+    u.on('delta-fallback', () => fallbacks++);
+    await u.checkForUpdates();
+    await u.downloadUpdate();
+    assert.strictEqual(modes[0], 'full', 'CRC 损坏应回退全量');
     assert.ok(fallbacks >= 1, '应发出 delta-fallback 事件');
   } finally {
     ctx.appDir = savedAppDir;

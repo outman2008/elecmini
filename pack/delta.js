@@ -15,12 +15,17 @@
  *   变更，命中率高；块整体错位的退化场景仍可正确重建（只是 delta 变大）。
  * - 目录级：未变文件不写入 delta；新增文件整块 ADD；删除文件记 remove。
  *
+ * 差分包以标准 ZIP 容器分发（内部 entry 为 delta.json，DEFLATE 压缩）：.diff
+ * 扩展名冷门，静态服务器/CDN/浏览器可能不识别；.zip 通用且能被系统解压工具打开。
+ * ZIP 只负责封装与压缩，安全边界不变：sha256 校验的是 zip 字节，zip 内还有 CRC32，
+ * 重建结果仍要经过 verifyRelease（Ed25519 + files[] sha256）。
+ *
  * 用法：
  *   node pack/delta.js --gen --base <oldDir> --target <newDir> \
- *        --from 1.0.0 --to 3.0.0 --out dist/3-1.diff
+ *        --from 1.0.0 --to 3.0.0 --out dist/c3000000-c1000000.zip
  *   node pack/delta.js --batch --versions <dir> --out <dir>
- *        # 扫描 <dir> 下各子目录的 update.json 读版本，为每旧版本生成 <to>-<from>.diff + deltas.json
- *   node pack/delta.js --apply --base <dir> --delta <diff> --out <dir>
+ *        # 扫描 <dir> 下各子目录的 update.json 读版本，为每旧版本生成 <to>-<from>.zip + deltas.json
+ *   node pack/delta.js --apply --base <dir> --delta <file.zip> --out <dir>
  *   node pack/delta.js --self-test
  */
 
@@ -28,6 +33,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const versionMod = require('./version.js');
+const zipMod = require('./zip.js');
 
 const DEFAULT_BLOCK = 4096;
 const DELTA_FORMAT = 'elecmini-delta/1';
@@ -38,6 +44,21 @@ function sha256buf(buf) {
 
 function sha256file(file) {
   return sha256buf(fs.readFileSync(file));
+}
+
+/** 把 delta 对象封装成标准 zip Buffer（内部 entry 固定为 delta.json） */
+function packDelta(deltaObj) {
+  return zipMod.zipBuffer('delta.json', Buffer.from(JSON.stringify(deltaObj)));
+}
+
+/**
+ * 把下载的差分包字节还原成 delta 对象。
+ * encoding==='zip' 时按 zip 解包；否则按纯 JSON（兼容打包前遗留的 .diff 文件）。
+ */
+function unpackDelta(buf, encoding) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  if (encoding === 'zip') return JSON.parse(zipMod.unzipBuffer(b).content.toString('utf8'));
+  return JSON.parse(b.toString('utf8'));
 }
 
 function walk(dir, base = '') {
@@ -241,19 +262,23 @@ function batchGenerate(versionsDir, outDir, options = {}) {
   const latest = entries[entries.length - 1];
   const deltas = [];
   for (const old of entries.slice(0, -1)) {
-    // 差分包文件名只用 versionCode（纯数字），杜绝特殊字符进入路径/URL
-    const fileName = `c${latest.versionCode}-c${old.versionCode}.diff`;
+    // 差分包文件名只用 versionCode（纯数字），杜绝特殊字符进入路径/URL；
+    // 内容打成标准 zip（.zip 后缀通用，服务器/CDN/浏览器普遍支持）。
+    const fileName = `c${latest.versionCode}-c${old.versionCode}.zip`;
     const diffPath = path.join(outDir, fileName);
     const delta = generateDirDelta(old.dir, latest.dir, old.version, latest.version, options);
-    fs.writeFileSync(diffPath, JSON.stringify(delta));
+    const zipBuf = packDelta(delta);
+    fs.writeFileSync(diffPath, zipBuf);
     deltas.push({
       fromVersion: old.version,
       toVersion: latest.version,
       fromCode: old.versionCode,
       toCode: latest.versionCode,
       file: fileName,
+      encoding: 'zip',
       sha256: sha256file(diffPath),
       bytes: fs.statSync(diffPath).size,
+      uncompressedBytes: Buffer.byteLength(JSON.stringify(delta)),
       stats: delta.stats,
     });
     console.log(
@@ -368,8 +393,10 @@ function attachDeltasToUpdate(outDir, versionInfo, summary, builds) {
       fromCode: d.fromCode,
       toCode: d.toCode,
       file: `deltas/${d.file}`,
+      encoding: d.encoding || 'json',
       sha256: d.sha256,
       bytes: d.bytes,
+      uncompressedBytes: d.uncompressedBytes,
       stats: d.stats,
     }));
   }
@@ -468,8 +495,12 @@ function selfTest() {
   applyDirDelta(v2, d23, r23);
   const filesEqual = (a, bDir) =>
     walk(a).every((rel) => fs.readFileSync(path.join(a, rel)).equals(fs.readFileSync(path.join(bDir, rel))));
-  check('v1 + 3-1.diff 重建 == v3', () => filesEqual(v3, r13) && walk(r13).length === walk(v3).length);
-  check('v2 + 3-2.diff 重建 == v3', () => filesEqual(v3, r23) && walk(r23).length === walk(v3).length);
+  check('v1 + delta 重建 == v3', () => filesEqual(v3, r13) && walk(r13).length === walk(v3).length);
+  check('v2 + delta 重建 == v3', () => filesEqual(v3, r23) && walk(r23).length === walk(v3).length);
+  check('delta 经 zip 封装/解包往返一致', () => {
+    const back = unpackDelta(packDelta(d13), 'zip');
+    return JSON.stringify(back) === JSON.stringify(d13);
+  });
 
   // 批量生成 + 选择
   const deltasDir = path.join(tmp, 'deltas');
@@ -478,9 +509,14 @@ function selfTest() {
     '批量生成差分包（文件名用 code）',
     () =>
       idx.deltas.length === 2 &&
-      idx.deltas.some((d) => d.file === 'c3000000-c1000000.diff') &&
-      idx.deltas.some((d) => d.file === 'c3000000-c2000000.diff'),
+      idx.deltas.some((d) => d.file === 'c3000000-c1000000.zip') &&
+      idx.deltas.some((d) => d.file === 'c3000000-c2000000.zip'),
   );
+  check('差分包是真 zip 且条目带 encoding/uncompressedBytes', () => {
+    const f = path.join(deltasDir, 'c3000000-c1000000.zip');
+    const head = fs.readFileSync(f).subarray(0, 2).toString();
+    return head === 'PK' && idx.deltas.every((d) => d.encoding === 'zip' && d.uncompressedBytes > 0);
+  });
   check('deltas 条目带 fromCode/toCode', () => idx.deltas.every((d) => d.fromCode > 0 && d.toCode === 3000000));
   check('selectDelta: v1 选 3-1（按 code）', () => selectDelta(idx, '1.0.0', 1000000).file.includes('c1000000'));
   check('selectDelta: v2 选 3-2（按 code）', () => selectDelta(idx, '2.0.0', 2000000).file.includes('c2000000'));
@@ -516,8 +552,7 @@ function selfTest() {
   check('打包归档生成 code 命名的差分包', () => {
     const dDir = path.join(packOut, 'deltas', 'slim-linux-x64');
     return (
-      fs.existsSync(path.join(dDir, 'c3000000-c1000000.diff')) &&
-      fs.existsSync(path.join(dDir, 'c3000000-c2000000.diff'))
+      fs.existsSync(path.join(dDir, 'c3000000-c1000000.zip')) && fs.existsSync(path.join(dDir, 'c3000000-c2000000.zip'))
     );
   });
   check('打包差分包 file 带 sku-target 前缀', () =>
@@ -531,7 +566,8 @@ function selfTest() {
       u.versionCode === 3000000 &&
       u.deltas.length === 2 &&
       u.deltas[0].file.startsWith('deltas/') &&
-      u.deltas[0].fromCode === 1000000
+      u.deltas[0].fromCode === 1000000 &&
+      u.deltas.every((d) => d.encoding === 'zip')
     );
   });
   check('首次打包仅 1 版本时优雅降级为空索引', () => {
@@ -559,8 +595,8 @@ function selfTest() {
     const u = JSON.parse(fs.readFileSync(path.join(arch.dir, 'update.json'), 'utf8'));
     return u.version === weirdVer && u.versionCode === weirdCode;
   });
-  const weirdSel = selectDelta([{ fromVersion: weirdVer, fromCode: weirdCode, file: 'x.diff' }], 'anything', weirdCode);
-  check('特殊字符版本：按 code 匹配不依赖展示串', () => weirdSel && weirdSel.file === 'x.diff');
+  const weirdSel = selectDelta([{ fromVersion: weirdVer, fromCode: weirdCode, file: 'x.zip' }], 'anything', weirdCode);
+  check('特殊字符版本：按 code 匹配不依赖展示串', () => weirdSel && weirdSel.file === 'x.zip');
 
   let pass = 0;
   for (const [name, ok, msg] of cases) {
@@ -589,8 +625,12 @@ function main() {
     }
     const delta = generateDirDelta(base, target, get('--from') || '0.0.0', get('--to') || '0.0.0');
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify(delta));
-    console.log(`[DELTA] 生成 ${out}: ${delta.files.length} files, stats=${JSON.stringify(delta.stats)}`);
+    // 输出 .zip 用标准 zip 封装；其它后缀保留纯 JSON（便于调试/兼容）
+    const zipOut = /\.zip$/i.test(out);
+    fs.writeFileSync(out, zipOut ? packDelta(delta) : JSON.stringify(delta));
+    console.log(
+      `[DELTA] 生成 ${out} (${zipOut ? 'zip' : 'json'}): ${delta.files.length} files, stats=${JSON.stringify(delta.stats)}`,
+    );
     return;
   }
   if (argv.includes('--batch')) {
@@ -610,7 +650,10 @@ function main() {
       console.error('需要 --base --delta --out');
       process.exit(2);
     }
-    const delta = JSON.parse(fs.readFileSync(deltaPath, 'utf8'));
+    const raw = fs.readFileSync(deltaPath);
+    // .zip 后缀或文件头是 PK 魔数时按 zip 解包，否则按纯 JSON（兼容旧 .diff）
+    const isZip = /\.zip$/i.test(deltaPath) || (raw.length >= 2 && raw[0] === 0x50 && raw[1] === 0x4b);
+    const delta = unpackDelta(raw, isZip ? 'zip' : 'json');
     applyDirDelta(base, delta, out);
     console.log(`[DELTA] 重建完成: ${out}`);
     return;
@@ -625,6 +668,8 @@ module.exports = {
   applyFileDelta,
   generateDirDelta,
   applyDirDelta,
+  packDelta,
+  unpackDelta,
   batchGenerate,
   archiveBuild,
   packageAndGenerateDeltas,

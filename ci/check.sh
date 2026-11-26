@@ -73,8 +73,11 @@ run "更新器自测" node pack/update.js --self-test
 # 5.1) 版本双轨自测（versionCode 解析/推导/比较，特殊字符不污染机器键）
 run "版本双轨自测" node pack/version.js --self-test
 
-# 5.2) 增量更新器自测（块级 delta + 差分包选择 + 篡改检测 + 打包闭环）
+# 5.2) 增量更新器自测（块级 delta + zip 封装 + 差分包选择 + 篡改检测 + 打包闭环）
 run "增量更新器自测" node pack/delta.js --self-test
+
+# 5.2.1) ZIP 容器自测（差分包用标准 zip 封装，绕开冷门 .diff 扩展名）
+run "ZIP 容器自测" node pack/zip.js --self-test
 
 # 5.5) P3-C 签名脚本自测（命令构造正确性）
 run "签名脚本自测" node pack/sign.js --self-test

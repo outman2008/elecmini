@@ -28,9 +28,9 @@
 假设服务器上 code 为 101、102、103 的三个版本（每个版本是含 `update.json` 的目录）：
 
 ```
-服务器自动生成：c103-c101.diff、c103-c102.diff
-  · code=101 的客户端 → 自动选 c103-c101.diff → 升级到 103
-  · code=102 的客户端 → 自动选 c103-c102.diff → 升级到 103
+服务器自动生成：c103-c101.zip、c103-c102.zip
+  · code=101 的客户端 → 自动选 c103-c101.zip → 升级到 103
+  · code=102 的客户端 → 自动选 c103-c102.zip → 升级到 103
   · 无匹配差分包 / 增量失败 → 自动回退全量下载
 ```
 
@@ -42,13 +42,13 @@
 **打包时自动完成（默认）：** `pack/build.js` 在每次打包后做三件事，无需手动干预：
 
 1. 归档产物：`dist/versions/<sku>-<target>/c<versionCode>/`（快照自带 `update.json`，含 `version`+`versionCode`）
-2. 对同一 SKU 的每个旧版本生成 `dist/deltas/<sku>-<target>/c<to>-c<from>.diff` + `deltas.json`
-3. 把差分包索引写进 `dist/update.json` 的 `deltas` 字段（含 `fromCode`/`toCode`；每次打包都基于最新产物刷新）
+2. 对同一 SKU 的每个旧版本生成 `dist/deltas/<sku>-<target>/c<to>-c<from>.zip` + `deltas.json`
+3. 把差分包索引写进 `dist/update.json` 的 `deltas` 字段（含 `fromCode`/`toCode`/`encoding`；每次打包都基于最新产物刷新）
 
 ```bash
 node pack/build.js --version 1.2.0 --version-code 1200   # 展示版本默认取 package.json；code 默认推导
 node pack/build.js --version '1.2.3-beta #frag' --version-code 1201  # 特殊字符展示串 + 显式 code
-node pack/build.js --no-delta             # 关闭自动差分（不归档、不生成 diff）
+node pack/build.js --no-delta             # 关闭自动差分（不归档、不生成 zip）
 ```
 
 首次打包只有 1 个版本时生成空索引，`autoUpdater` 自动走全量；从第二个版本起
@@ -60,7 +60,7 @@ node pack/build.js --no-delta             # 关闭自动差分（不归档、不
 node pack/delta.js --batch --versions dist/versions --out dist/deltas
 ```
 
-产出 `c103-c101.diff`、`c103-c102.diff` 和 `deltas.json` 索引。把 `deltas.json` 的
+产出 `c103-c101.zip`、`c103-c102.zip` 和 `deltas.json` 索引。把 `deltas.json` 的
 `deltas` 数组内嵌进 `update.json` 的 `deltas` 字段（或把该数组单独托管，
 让 `deltas` 指向它的 URL）：
 
@@ -70,12 +70,30 @@ node pack/delta.js --batch --versions dist/versions --out dist/deltas
   "version": "3.0.0",
   "versionCode": 3000000,
   "deltas": [
-    { "fromVersion": "1.0.0", "fromCode": 1000000, "toVersion": "3.0.0", "toCode": 3000000, "file": "deltas/slim-linux-x64/c3000000-c1000000.diff", "sha256": "...", "bytes": 1234 },
-    { "fromVersion": "2.0.0", "fromCode": 2000000, "toVersion": "3.0.0", "toCode": 3000000, "file": "deltas/slim-linux-x64/c3000000-c2000000.diff", "sha256": "...", "bytes": 1300 }
+    { "fromVersion": "1.0.0", "fromCode": 1000000, "toVersion": "3.0.0", "toCode": 3000000, "file": "deltas/slim-linux-x64/c3000000-c1000000.zip", "encoding": "zip", "sha256": "...", "bytes": 1234, "uncompressedBytes": 4200 },
+    { "fromVersion": "2.0.0", "fromCode": 2000000, "toVersion": "3.0.0", "toCode": 3000000, "file": "deltas/slim-linux-x64/c3000000-c2000000.zip", "encoding": "zip", "sha256": "...", "bytes": 1300, "uncompressedBytes": 4500 }
   ],
   "files": [ ... ]
 }
 ```
+
+## 差分包格式：标准 zip 容器（.zip）
+
+差分包文件是**真正的标准 ZIP**（不是改后缀的 JSON），内部只有一个 entry
+`delta.json`，用 DEFLATE 压缩。这样设计的原因：
+
+- **`.diff` 扩展名冷门**：静态服务器/CDN 的 MIME 表或扩展名白名单常不认识它，
+  可能返回 `application/octet-stream` 甚至 403；浏览器地址栏直接访问也体验差。
+  `.zip` 是通用格式，所有服务器/CDN/浏览器都原生支持，用户下载后也能用系统
+  解压工具打开查看。
+- **真压缩**：zip 容器本身压缩 delta JSON（典型压缩率 60%+），减少下载量。
+- **零依赖**：`pack/zip.js` 用 Node 内置 `zlib.crc32` + `deflateRawSync` 手写
+  单 entry ZIP 容器，不引入 jszip，保持 ElecMini 轻量。
+
+ZIP 只负责封装与压缩，**不改变安全边界**：manifest 的 `sha256` 校验的是
+**下载的 zip 字节**（篡改 zip 任一层都过不了），zip 内部还有 CRC32 二次校验，
+重建结果仍要过 `verifyRelease`（Ed25519 + `files[]` sha256）。条目用
+`encoding: "zip"` 标记；缺省（无该字段）的旧 manifest 仍按纯 JSON 解析，向后兼容。
 
 ## 块级差分算法
 
@@ -107,6 +125,7 @@ manifest：
 | 无 `deltas` 字段 / 无匹配版本 | 直接全量下载 |
 | 本地应用目录不可用 | 增量失败 → 回退全量 |
 | 差分包 sha256 不符 | 增量失败 → 回退全量 |
+| zip 容器 CRC32 不符（解压损坏） | 增量失败 → 回退全量 |
 | 重建结果未通过验签 | 清场重下全量 → 再验 → 失败报 error |
 | 差分包下载网络错误 | 增量失败 → 回退全量 |
 
@@ -118,7 +137,8 @@ manifest：
 ## 自检
 
 ```bash
-node pack/delta.js --self-test   # 21 项：块命中、还原、篡改、v1→3/v2→3、按 code 选择、打包闭环、特殊字符版本
+node pack/zip.js --self-test     # 8 项：zip 往返、CRC 篡改检测、非 zip/截断拒绝
+node pack/delta.js --self-test   # 23 项：块命中、还原、篡改、zip 封装、v1→3/v2→3、按 code 选择、打包闭环、特殊字符版本
 node pack/version.js --self-test # 11 项：versionCode 解析/推导/比较、特殊字符不污染 code
-npm test                          # 含增量更新器自测 + autoUpdater 增量/回退单测
+npm test                          # 含增量更新器自测 + autoUpdater 增量/回退/CRC 单测
 ```

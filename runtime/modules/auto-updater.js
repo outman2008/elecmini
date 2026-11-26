@@ -89,6 +89,26 @@ class AutoUpdater extends EventEmitter {
     });
   }
 
+  /** 以 Buffer 下载（差分包是真 zip，不能用字符串拼接，否则二进制损坏） */
+  async _fetchBinary(url) {
+    if (this._transport) {
+      const r = await this._transport(url);
+      if (Buffer.isBuffer(r)) return r;
+      if (typeof r === 'string') return Buffer.from(r);
+      return Buffer.from(JSON.stringify(r));
+    }
+    const https = require('https');
+    return new Promise((resolve, reject) => {
+      https
+        .get(url, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+        })
+        .on('error', reject);
+    });
+  }
+
   /** Electron: checkForUpdates() -> Promise<{ updateInfo } | null> */
   async checkForUpdates() {
     this.emit('checking-for-update');
@@ -159,12 +179,15 @@ class AutoUpdater extends EventEmitter {
     if (!appDir || !fs.existsSync(appDir)) throw new Error('本地版本目录不可用，无法增量升级');
 
     const deltaUrl = entry.url || new URL(entry.file, this.feedURL).toString();
-    const raw = await this._fetch(deltaUrl);
-    const delta = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const bytes = typeof raw === 'string' ? Buffer.from(raw) : Buffer.from(JSON.stringify(delta));
+    const bytes = await this._fetchBinary(deltaUrl);
+    // sha256 校验的是下载字节（zip 容器本身），zip 内还有 CRC32 二次校验；
+    // 篡改任一层都无法通过，重建结果还要过 verifyRelease。
     if (entry.sha256 && crypto.createHash('sha256').update(bytes).digest('hex') !== entry.sha256) {
       throw new Error('差分包 sha256 不符');
     }
+    // encoding='zip'（或 .zip 后缀）时解包；缺省按纯 JSON 处理，兼容旧 manifest。
+    const encoding = entry.encoding === 'zip' || /\.zip$/i.test(entry.file || '') ? 'zip' : 'json';
+    const delta = getDelta().unpackDelta(bytes, encoding);
     getDelta().applyDirDelta(appDir, delta, staging);
     this.emit('download-progress', {
       percent: 100,
