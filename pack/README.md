@@ -10,6 +10,7 @@
 | `build.js` | 打包构建：组装运行时 + 应用 + 更新清单，产出 Slim / Full 包 |
 | `sign.js` | Ed25519 代码签名与验签（含自检） |
 | `update.js` | 自动更新：manifest 校验、验签、原子替换、失败回滚 |
+| `delta.js` | 增量更新：块级差分包生成/应用、版本自动选择、篡改检测；失败自动回退全量 |
 | `gray.js` | 灰度分桶（按匿名设备 ID 决定是否放量） |
 | `telemetry-report.js` | 遥测聚合：JSONL 样本 → L0 覆盖率分布 + Go/No-Go 判定 |
 | `fetch-webview2.js` | 拉取 WebView2 版本数据 |
@@ -24,6 +25,11 @@
 node pack/build.js --app examples/minimal
 node pack/sign.js --verify <bundle>
 node pack/telemetry-report.js --dir <telemetryDir> --min-samples 385
+
+# 增量更新：服务器上有 v1/v2/v3（各含 update.json），自动生成 3-1.diff / 3-2.diff
+node pack/delta.js --batch --versions dist/versions --out dist/deltas
+# 客户端按当前版本自动选包：v1 -> 3-1.diff，v2 -> 3-2.diff
+# 差分包里的 deltas 数组写入 update.json 的 deltas 字段即可启用
 ```
 
 ## SKU 说明

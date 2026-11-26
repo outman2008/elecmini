@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Delta (incremental) updates** (`pack/delta.js`, inspired by Ubuntu/Debian debdelta): the server keeps multiple historical versions and auto-generates `latest-old.diff` for every old version (`node pack/delta.js --batch --versions dist/versions --out dist/deltas`). Clients select by their own version — v1 picks `3-1.diff`, v2 picks `3-2.diff` — and rebuild from local files instead of re-downloading the full package. Pure-Node block-level diff (`COPY`/`ADD` instructions), zero dependencies; unchanged files are excluded. `autoUpdater` now prefers a matching delta, falls back to full download on any failure (bad hash, missing local dir, network error), and **still runs `verifyRelease` (Ed25519 + files[] sha256)** on the rebuilt staging — deltas never bypass signature verification. Added `delta-selected` / `delta-fallback` events and `downloadMode` field; `docs/incremental-update.md` documents the design and failure matrix. Added `pack/delta.js --self-test` (12 assertions) to CI and 2 `autoUpdater` delta/fallback unit tests (modules 28/28).
+
 ### Fixed
 
 - **Tray menu clicks (OpenChamber migration)**: the host emits `tray:menu` with `commandId`, but the JS shim only subscribed to `tray:click`, so tray `Menu.buildFromTemplate` `click` callbacks (e.g. OpenChamber's "Open"/"Quit") never fired. `Tray.setContextMenu` now retains template items and falls back to `label` as the command id when no explicit `id` is set (matching host-side behavior); `bindTrayEvents` dispatches `tray:menu` back to the matching item's `click`. Regression test added in `runtime/modules/modules.test.js` (26/26).

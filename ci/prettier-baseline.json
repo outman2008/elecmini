@@ -37,7 +37,6 @@
   "runtime/modules/session.js": "d753c5e10fde8c43d41b3e3f5d81f558443d1225c199e3a7276fbeb7799854a9",
   "runtime/modules/shell.js": "5590d4a9b4328c7c775f1ffd16efd7be8c9e344d9688fde8fe6bb1d70167b8b0",
   "runtime/modules/system-preferences.js": "f43683a1538662682be51d51d997a5e106e7a1cfb873ed0b9bf98fc121d7f26f",
-  "runtime/modules/tray.js": "8ddcb5032b5f6752735b43a31fc0c3aa487cf8c59721a29f213b77f78778f43f",
   "runtime/preload-runtime.test.js": "a255b91784767f8c639a5d0f9c8a6eb1d6b38b8c302cf4d708e5ba5f8b590855",
   "runtime/static-server.js": "7ac7886261a4d13213df9e310c75f107af97d40d58eee0b68381b2eab7bb5de9",
   "runtime/store.js": "40c04bf7d990642e806b9a992e3902968e4ad5f7b542ee1a41ad6ec9a4e59e67",

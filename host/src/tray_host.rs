@@ -197,8 +197,7 @@ fn decode_icon(data_url: Option<&str>) -> Result<Option<Icon>, String> {
     if w == 0 || h == 0 {
         return Err("empty tray icon".to_string());
     }
-    let icon = Icon::from_rgba(img.into_raw(), w, h)
-        .map_err(|e| format!("tray icon rgba: {e}"))?;
+    let icon = Icon::from_rgba(img.into_raw(), w, h).map_err(|e| format!("tray icon rgba: {e}"))?;
     Ok(Some(icon))
 }
 

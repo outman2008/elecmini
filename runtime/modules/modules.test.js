@@ -290,6 +290,107 @@ test('electron.js 导出 autoUpdater 且是 EventEmitter', () => {
   assert.strictEqual(typeof electron.autoUpdater.quitAndInstall, 'function');
 });
 
+// ---------------- autoUpdater 增量更新（1.1.1）----------------
+test('autoUpdater 增量下载：按当前版本选差分包并重建', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const delta = require('../../pack/delta.js');
+  const update = require('../../pack/update.js');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const crypto = require('crypto');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-inc-test-'));
+  const v1 = path.join(tmp, 'v1');
+  const v3 = path.join(tmp, 'v3');
+  fs.mkdirSync(path.join(v1, 'app'), { recursive: true });
+  fs.mkdirSync(path.join(v3, 'app'), { recursive: true });
+  const oldBody = 'VERSION=1.0.0\n' + 'x'.repeat(12000) + '\n';
+  const newBody = 'VERSION=3.0.0\n' + 'x'.repeat(12000) + '\n';
+  fs.writeFileSync(path.join(v1, 'app/main.js'), oldBody);
+  fs.writeFileSync(path.join(v1, 'shared.txt'), 'same\n');
+  fs.writeFileSync(path.join(v3, 'app/main.js'), newBody);
+  fs.writeFileSync(path.join(v3, 'shared.txt'), 'same\n');
+  fs.writeFileSync(path.join(v3, 'new.txt'), 'fresh\n');
+
+  const diff = delta.generateDirDelta(v1, v3, '1.0.0', '3.0.0');
+  const diffText = JSON.stringify(diff);
+  const diffSha = crypto.createHash('sha256').update(Buffer.from(diffText)).digest('hex');
+  const release = update.generateRelease(v3, '3.0.0', 'slim');
+  release.deltas = [
+    { fromVersion: '1.0.0', toVersion: '3.0.0', file: '3-1.diff', sha256: diffSha, bytes: diffText.length },
+  ];
+  // release.files[] 的 url 指向本地 v3 文件（transport 按 URL 返回内容）
+  for (const f of release.files) f.url = 'file://' + path.join(v3, f.path);
+
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = v1;
+  let downloadedMode = null;
+  try {
+    const u = new AutoUpdater();
+    u.currentVersion = '1.0.0';
+    u.setFeedURL('https://example.test/update.json');
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url === 'https://example.test/3-1.diff') return diffText;
+      if (url.startsWith('file://')) return fs.readFileSync(url.slice(7));
+      throw new Error('unexpected url ' + url);
+    });
+    u.on('update-downloaded', (i) => {
+      downloadedMode = i.downloadMode;
+    });
+    await u.checkForUpdates();
+    await u.downloadUpdate();
+    assert.strictEqual(downloadedMode, 'delta', '应走增量下载');
+    assert.ok(u._stagingDir && fs.existsSync(path.join(u._stagingDir, 'new.txt')), '增量重建应产出新文件');
+    assert.strictEqual(fs.readFileSync(path.join(u._stagingDir, 'app/main.js'), 'utf8'), newBody, '增量重建内容应一致');
+  } finally {
+    ctx.appDir = savedAppDir;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('autoUpdater 增量失败自动回退全量下载', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const update = require('../../pack/update.js');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-inc-fb-'));
+  fs.mkdirSync(path.join(tmp, 'app'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'app/main.js'), 'new-version\n');
+  const release = update.generateRelease(tmp, '2.0.0', 'slim');
+  for (const f of release.files) f.url = 'file://' + path.join(tmp, f.path);
+  // 差分包 sha256 错误 → 增量校验失败 → 回退全量
+  release.deltas = [{ fromVersion: '1.0.0', toVersion: '2.0.0', file: '2-1.diff', sha256: 'deadbeef', bytes: 10 }];
+
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = path.join(tmp, 'does-not-exist'); // 本地目录不可用 → 增量必失败
+  let modes = [];
+  let fallbacks = 0;
+  try {
+    const u = new AutoUpdater();
+    u.currentVersion = '1.0.0';
+    u.setFeedURL('https://example.test/update.json');
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url === 'https://example.test/2-1.diff') return JSON.stringify({ format: 'elecmini-delta/1', files: [] });
+      if (url.startsWith('file://')) return fs.readFileSync(url.slice(7));
+      throw new Error('unexpected url ' + url);
+    });
+    u.on('update-downloaded', (i) => modes.push(i.downloadMode));
+    u.on('delta-fallback', () => fallbacks++);
+    await u.checkForUpdates();
+    await u.downloadUpdate();
+    assert.strictEqual(modes[0], 'full', '回退后应走全量下载');
+    assert.ok(fallbacks >= 1, '应发出 delta-fallback 事件');
+  } finally {
+    ctx.appDir = savedAppDir;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // ---------------- tray（P6-H v1.1.0 回归）----------------
 test('Tray.setContextMenu 可由 host tray:menu 事件触发 click', () => {
   const electron = require('../electron.js');

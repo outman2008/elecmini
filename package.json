@@ -65,7 +65,8 @@
     "migrate/api-surface/contract-fill.test.js",
     "migrate/api-surface/official-specs/",
     "migrate/README.md",
-    "docs/unsupported-apis.md"
+    "docs/unsupported-apis.md",
+    "docs/incremental-update.md"
   ],
   "scripts": {
     "lint": "eslint runtime shim/src pack contract",
