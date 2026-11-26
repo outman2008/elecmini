@@ -16,8 +16,12 @@ const store = {
   ipcHandlers: new Map(),
   ipcListeners: new Map(),
   allocWinId: () => ++winSeq,
-  registerWindow(id, info) { store.windows.set(id, { ...info, id }); },
-  getWindow(id) { return store.windows.get(id); },
+  registerWindow(id, info) {
+    store.windows.set(id, { ...info, id });
+  },
+  getWindow(id) {
+    return store.windows.get(id);
+  },
   onWin() {},
   onWC() {},
 };
@@ -30,13 +34,19 @@ const rpc = {
     if (m === 'shell:readClipboardHTML') return Promise.resolve({ html: '<b>H</b>' });
     return Promise.resolve({ ok: true, words: [] });
   },
-  notify(m, p) { calls.push({ m, p, notify: true }); },
+  notify(m, p) {
+    calls.push({ m, p, notify: true });
+  },
   on() {},
 };
 
 require('../context').init({
-  rpc, store, appDir: '/app', appPath: '/app',
-  baseUrl: 'http://127.0.0.1:1', closeServer: () => {},
+  rpc,
+  store,
+  appDir: '/app',
+  appPath: '/app',
+  baseUrl: 'http://127.0.0.1:1',
+  closeServer: () => {},
 });
 
 const tests = [];
@@ -166,13 +176,124 @@ test('app.getPath 返回字符串路径', () => {
   assert.ok(app.getPath('userData').length > 0);
 });
 
+// ---------------- notification（P6-G）----------------
+test('Notification.show 下发 notification:show 并触发 show 事件', async () => {
+  const { Notification } = require('./notification');
+  const n = new Notification({ title: 'T', body: 'B', subtitle: 'S', silent: true });
+  let shown = false;
+  n.on('show', () => {
+    shown = true;
+  });
+  await n.show();
+  const c = calls.find((x) => x.m === 'notification:show' && x.p.id === n._id);
+  assert.ok(c, '未下发 notification:show');
+  assert.strictEqual(c.p.title, 'T');
+  assert.strictEqual(c.p.body, 'B');
+  assert.strictEqual(c.p.silent, true);
+  assert.ok(shown, 'show 事件未触发');
+});
+
+test('Notification.close 下发 notification:close 并触发 close 事件', () => {
+  const { Notification } = require('./notification');
+  const n = new Notification({ title: 'X' });
+  let closed = false;
+  n.on('close', () => {
+    closed = true;
+  });
+  n.show(); // 置 _shown，异步不管
+  n.close();
+  const c = calls.find((x) => x.m === 'notification:close' && x.p.id === n._id);
+  assert.ok(c, '未下发 notification:close');
+  assert.ok(closed, 'close 事件未触发');
+});
+
+test('Notification.isSupported/requestPermission 形状正确', () => {
+  const { Notification } = require('./notification');
+  assert.strictEqual(typeof Notification.isSupported(), 'boolean');
+  assert.strictEqual(Notification.permission, 'default');
+  Notification.requestPermission((r) => assert.strictEqual(r, 'granted'));
+});
+
+test('electron.js 导出 Notification 且契约补齐后 close/show 仍在', () => {
+  const electron = require('../electron.js');
+  assert.strictEqual(typeof electron.Notification, 'function', 'Notification 未导出');
+  assert.strictEqual(typeof electron.Notification.isSupported, 'function');
+  const n = new electron.Notification({ title: 'A' });
+  assert.strictEqual(typeof n.show, 'function');
+  assert.strictEqual(typeof n.close, 'function');
+});
+
+// ---------------- autoUpdater（P6-I）----------------
+test('autoUpdater.checkForUpdates 事件序列：checking -> available', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const u = new AutoUpdater();
+  u.currentVersion = '1.0.0';
+  u.setFeedURL('https://example.test/update.json');
+  u._setTransport(async () =>
+    JSON.stringify({
+      format: 'elecmini-update/1',
+      version: '1.1.0',
+      generatedAt: '2026-01-01',
+      files: [],
+    }),
+  );
+  const events = [];
+  u.on('checking-for-update', () => events.push('checking'));
+  u.on('update-available', (i) => events.push('available:' + i.version));
+  const r = await u.checkForUpdates();
+  assert.ok(r && r.updateInfo.version === '1.1.0');
+  assert.deepStrictEqual(events, ['checking', 'available:1.1.0']);
+});
+
+test('autoUpdater.checkForUpdates 无新版本触发 update-not-available', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const u = new AutoUpdater();
+  u.currentVersion = '2.0.0';
+  u.setFeedURL('https://example.test/update.json');
+  u._setTransport(async () => JSON.stringify({ version: '1.9.0', files: [] }));
+  let notified = false;
+  u.on('update-not-available', () => {
+    notified = true;
+  });
+  const r = await u.checkForUpdates();
+  assert.strictEqual(r, null);
+  assert.ok(notified);
+});
+
+test('autoUpdater.checkForUpdates 无 feedURL 时安全降级不抛错', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const u = new AutoUpdater();
+  u.feedURL = '';
+  let err = false;
+  u.on('error', () => {
+    err = true;
+  });
+  const r = await u.checkForUpdates();
+  assert.strictEqual(r, null);
+  assert.strictEqual(err, false);
+});
+
+test('electron.js 导出 autoUpdater 且是 EventEmitter', () => {
+  const electron = require('../electron.js');
+  assert.ok(electron.autoUpdater, 'autoUpdater 未导出');
+  assert.strictEqual(typeof electron.autoUpdater.on, 'function');
+  assert.strictEqual(typeof electron.autoUpdater.checkForUpdates, 'function');
+  assert.strictEqual(typeof electron.autoUpdater.quitAndInstall, 'function');
+});
+
 // ---------------- runner ----------------
 (async () => {
   let pass = 0;
   const failures = [];
   for (const t of tests) {
-    try { await t.fn(); console.log('  ✅', t.name); pass++; }
-    catch (e) { failures.push(t.name); console.error('  ❌', t.name, '-', e.message); }
+    try {
+      await t.fn();
+      console.log('  ✅', t.name);
+      pass++;
+    } catch (e) {
+      failures.push(t.name);
+      console.error('  ❌', t.name, '-', e.message);
+    }
   }
   console.log(`[modules] PASS=${pass}/${tests.length} FAIL=${failures.length}`);
   process.exit(failures.length ? 1 : 0);

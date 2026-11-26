@@ -73,6 +73,9 @@ run "更新器自测" node pack/update.js --self-test
 # 5.5) P3-C 签名脚本自测（命令构造正确性）
 run "签名脚本自测" node pack/sign.js --self-test
 
+# 5.6) P6-J：<webview> 多 WebView 契约静态检查
+run "webview 契约检查" node contract/webview-check.js
+
 # 6) P4-E 灰度分桶自测
 if [ -f pack/gray.js ]; then run "灰度分桶自测" node pack/gray.js --self-test; fi
 

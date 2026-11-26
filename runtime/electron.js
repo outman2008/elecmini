@@ -22,6 +22,8 @@ const { powerMonitor, bindPowerEvents } = require('./modules/power-monitor');
 const { systemPreferences } = require('./modules/system-preferences');
 const { Tray, bindTrayEvents } = require('./modules/tray');
 const { session, bindSessionEvents } = require('./modules/session');
+const { Notification, bindNotificationEvents } = require('./modules/notification');
+const { autoUpdater } = require('./modules/auto-updater');
 
 const { store, rpc } = ctx.get();
 
@@ -30,6 +32,7 @@ bindThemeEvents(rpc);
 bindPowerEvents(rpc);
 bindTrayEvents(rpc);
 bindSessionEvents(rpc);
+bindNotificationEvents(rpc);
 
 const app = new App();
 
@@ -72,6 +75,8 @@ const shimExports = {
   globalShortcut,
   powerMonitor,
   systemPreferences,
+  Notification,
+  autoUpdater,
 };
 
 // P5：官方契约补齐层——对文档声明但未实现的成员补状态镜像/降级桩并登记分级。

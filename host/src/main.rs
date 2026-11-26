@@ -13,8 +13,11 @@ use std::collections::HashMap;
 use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 
+mod notification;
 mod s4;
+mod tray_host;
 mod util;
+mod webview_host;
 
 use base64::Engine;
 use serde_json::{json, Value};
@@ -69,6 +72,8 @@ fn main() {
     let mut quitting = false;
     let mut protocols: HashMap<String, ProtocolDef> = HashMap::new(); // P2-B
     let s4state: Arc<Mutex<s4::S4State>> = Arc::new(Mutex::new(s4::S4State::default())); // S4
+    let mut tray_mgr = tray_host::TrayManager::new(); // P6-H 系统托盘
+    let mut guest_views = webview_host::WebViewHost::new(); // P6-J 多 WebView <webview>
 
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -77,6 +82,9 @@ fn main() {
             Event::NewEvents(StartCause::Init) => {
                 eprintln!("[HOST] event loop init, boot={:?}", boot_start.elapsed());
                 emit(&out, &json!({ "event": "host:ready", "engine": "wry/tao", "bootMs": boot_start.elapsed().as_millis() }));
+                // Notification.isSupported()：能力探测结果广播给 shim（autotest 下视为不支持，避免弹系统窗）
+                let notif_ok = std::env::var("ELECMINI_AUTOTEST").is_err() && notification::is_supported();
+                emit(&out, &json!({ "event": "notification:supported", "supported": notif_ok }));
             }
 
             // ---- Node 命令 ----
@@ -259,15 +267,87 @@ fn main() {
                             if !notify { respond(&out, id, json!({})); }
                         }
 
-                        // ===== P2-D：Tray / globalShortcut（平台能力探测，无头环境明确降级）=====
-                        "tray:create" | "tray:setImage" | "tray:setTitle" | "tray:setTooltip"
-                        | "tray:setContextMenu" | "tray:popup" | "tray:destroy" => {
-                            // tao 0.34 无内置 TrayIcon；tray-icon crate 需 GTK app indicator，
-                            // 无头 Xvfb 下不可用 → 返回明确降级原因（不静默失败）
-                            let ok = false;
-                            if !notify {
-                                respond(&out, id, json!({ "ok": ok, "reason": "Tray 需 tray-icon/GTK appindicator，当前平台不可用（P2 降级）", "method": method }));
-                            }
+                        // ===== P6-G：Notification（跨平台系统通知）=====
+                        "notification:show" => {
+                            let id_notif = params.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                            let title = params.get("title").and_then(Value::as_str).unwrap_or("");
+                            let body = params.get("body").and_then(Value::as_str).unwrap_or("");
+                            let subtitle = params.get("subtitle").and_then(Value::as_str).unwrap_or("");
+                            let silent = params.get("silent").and_then(Value::as_bool).unwrap_or(false);
+                            let autotest = std::env::var("ELECMINI_AUTOTEST").is_ok();
+                            let ok = if autotest {
+                                // CI 不弹系统窗，仅回推事件供断言
+                                true
+                            } else {
+                                notification::show(title, body, subtitle, silent).is_ok()
+                            };
+                            // 回推 show 事件（Electron：通知显示时触发）
+                            emit(&out, &json!({ "event": "notification:show", "id": id_notif }));
+                            if !notify { respond(&out, id, json!({ "ok": ok })); }
+                        }
+                        "notification:close" => {
+                            let id_notif = params.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                            emit(&out, &json!({ "event": "notification:close", "id": id_notif }));
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "notification:isSupported" => {
+                            let supported = std::env::var("ELECMINI_AUTOTEST").is_err() && notification::is_supported();
+                            if !notify { respond(&out, id, json!({ "supported": supported })); }
+                        }
+
+                        // ===== P6-H：Tray（tray-icon + muda 真实实现，无头环境明确降级）=====
+                        "tray:create" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                            let autotest = std::env::var("ELECMINI_AUTOTEST").is_ok();
+                            let supported = !autotest && tray_host::TrayManager::is_supported();
+                            let result = if supported {
+                                // Electron Tray 构造只收 nativeImage；tooltip 由 setToolTip 设置。
+                                // 构造阶段如带了 image(dataURL)，直接落地为图标，避免默认灰块。
+                                let image = params.get("image").and_then(Value::as_str);
+                                tray_mgr.create(&tray_id, None)
+                                    .and_then(|_| tray_mgr.set_image(&tray_id, image))
+                                    .map(|_| json!({ "ok": true }))
+                                    .unwrap_or_else(|e| json!({ "ok": false, "reason": e, "method": method }))
+                            } else {
+                                json!({ "ok": false, "reason": "Tray 在无头/autotest 环境不可用（P2 降级）", "method": method })
+                            };
+                            if !notify { respond(&out, id, result); }
+                        }
+                        "tray:setImage" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("");
+                            let image = params.get("image").and_then(Value::as_str);
+                            let _ = tray_mgr.set_image(tray_id, image);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "tray:setTitle" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("");
+                            let title = params.get("title").and_then(Value::as_str).unwrap_or("");
+                            tray_mgr.set_title(tray_id, title);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "tray:setTooltip" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("");
+                            let tip = params.get("tooltip").and_then(Value::as_str).unwrap_or("");
+                            tray_mgr.set_tooltip(tray_id, tip);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "tray:setContextMenu" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("");
+                            let items = params.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+                            let result = tray_mgr.set_context_menu(tray_id, &items)
+                                .map(|_| json!({ "ok": true }))
+                                .unwrap_or_else(|e| json!({ "ok": false, "reason": e }));
+                            if !notify { respond(&out, id, result); }
+                        }
+                        "tray:popup" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("");
+                            tray_mgr.popup(tray_id);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "tray:destroy" => {
+                            let tray_id = params.get("id").and_then(Value::as_str).unwrap_or("");
+                            tray_mgr.destroy(tray_id);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
                         }
                         "globalShortcut:register" | "globalShortcut:unregister" | "globalShortcut:unregisterAll" => {
                             // global-hotkey crate 未引入（编译成本 + Xvfb 无全局热键）→ 明确降级
@@ -352,6 +432,65 @@ fn main() {
                             let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
                             let open = webviews.get(&win_id).map(s4::is_devtools_open).unwrap_or(false);
                             if !notify { respond(&out, id, json!({ "open": open })); }
+                        }
+
+                        // ===== P6-J：多 WebView（Electron <webview> 契约）=====
+                        "webview:create" => {
+                            let guest_id = params.get("guestId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let url = params.get("url").and_then(Value::as_str).unwrap_or("about:blank").to_string();
+                            let x = params.get("x").and_then(Value::as_i64).unwrap_or(0) as i32;
+                            let y = params.get("y").and_then(Value::as_i64).unwrap_or(0) as i32;
+                            let w = params.get("width").and_then(Value::as_u64).unwrap_or(800) as u32;
+                            let h = params.get("height").and_then(Value::as_u64).unwrap_or(600) as u32;
+                            let result = windows.get(&win_id).ok_or_else(|| "父窗口不存在".to_string())
+                                .and_then(|win| guest_views.create(guest_id, win_id, win, &url, x, y, w, h, out.clone()));
+                            if !notify {
+                                respond(&out, id, match result {
+                                    Ok(()) => json!({ "ok": true }),
+                                    Err(e) => json!({ "ok": false, "reason": e }),
+                                });
+                            }
+                        }
+                        "webview:loadURL" => {
+                            let guest_id = params.get("guestId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let url = params.get("url").and_then(Value::as_str).unwrap_or("");
+                            let result = guest_views.load_url(guest_id, url);
+                            if !notify {
+                                respond(&out, id, match result {
+                                    Ok(()) => json!({ "ok": true }),
+                                    Err(e) => json!({ "ok": false, "reason": e }),
+                                });
+                            }
+                        }
+                        "webview:getURL" => {
+                            let guest_id = params.get("guestId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            if !notify { respond(&out, id, json!({ "url": guest_views.get_url(guest_id) })); }
+                        }
+                        "webview:setBounds" => {
+                            let guest_id = params.get("guestId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let x = params.get("x").and_then(Value::as_i64).unwrap_or(0) as i32;
+                            let y = params.get("y").and_then(Value::as_i64).unwrap_or(0) as i32;
+                            let w = params.get("width").and_then(Value::as_u64).unwrap_or(800) as u32;
+                            let h = params.get("height").and_then(Value::as_u64).unwrap_or(600) as u32;
+                            let _ = guest_views.set_bounds(guest_id, x, y, w, h);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
+                        }
+                        "webview:executeJavaScript" => {
+                            let guest_id = params.get("guestId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            let code = params.get("code").and_then(Value::as_str).unwrap_or("");
+                            let result = guest_views.execute_javascript(guest_id, code);
+                            if !notify {
+                                respond(&out, id, match result {
+                                    Ok(()) => json!({ "ok": true }),
+                                    Err(e) => json!({ "ok": false, "reason": e }),
+                                });
+                            }
+                        }
+                        "webview:destroy" => {
+                            let guest_id = params.get("guestId").and_then(Value::as_u64).unwrap_or(0) as u32;
+                            guest_views.destroy(guest_id);
+                            if !notify { respond(&out, id, json!({ "ok": true })); }
                         }
                         "session:clearCache" => {
                             if !notify { respond(&out, id, json!({ "ok": true })); }
@@ -759,6 +898,8 @@ fn main() {
             }
 
             Event::MainEventsCleared => {
+                // P6-H：把托盘点击/菜单事件从全局 channel 抽出并回推 renderer
+                tray_mgr.drain_events(&out);
                 if quitting { *control_flow = ControlFlow::Exit; }
             }
 

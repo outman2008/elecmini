@@ -32,9 +32,17 @@
 | `session.setProxy` / `resolveProxy` | 记录配置并回显 | wry 需 build 期注入，**对已建 WebView 不即时生效** |
 | `protocol.intercept*` | 返回 false | 未接入请求拦截（`register*` 已真实可用） |
 | `clipboard.readBuffer` / `writeBuffer` | 未实现 | 仅 text / html |
-| `Tray` | host 用 tray-icon 创建 | **无头 Xvfb 下不可用**（host 返回 `{ok:false}`）；真实桌面待验证 |
-| `globalShortcut` | host 用 global-hotkey | 同上，依赖真实 X11 / Win / macOS 桌面会话 |
+| `globalShortcut` | host 用 global-hotkey | host 未启用该 crate，返回明确降级原因（`{ok:false}`） |
 | `webContents.capturePage` | 系统截图（Linux `import`） | 非 Linux 返回空 nativeImage |
+
+### P6 新增能力（本次补齐）
+
+| API | 当前实现 | 限制 |
+|---|---|---|
+| `Notification` | 已导出；host 用 `notify-send`(Linux) / `osascript`(macOS) / PowerShell(Win) | 无头/autotest 下 `isSupported()=false`、`show()` 返回 false 但不抛错；点击回调需对应平台通知中心支持 |
+| `Tray` | **真实实现**（tray-icon 0.24 + muda 0.19，与 tao 0.34 配套） | 无头 Xvfb 下 `create` 返回 `{ok:false}`；真实桌面三平台可用；`setContextMenu` 的 click 通过 `Tray 'click'` 事件回传 |
+| `autoUpdater` | 已导出，electron-updater 事件模型（checking/available/progress/downloaded/error） | 底层是 `pack/update.js` 的 manifest + Ed25519 + applyWithRollback，**不是 electron-updater 本体**；feed 需为 `elecmini-update/1` 格式；`setFeedURL`/`checkForUpdates`/`downloadUpdate`/`quitAndInstall` 可用 |
+| `<webview>`（webviewTag） | 多 WebView：host `build_as_child` + preload 自定义元素；`loadURL`/`getURL`/`executeJavaScript`/`setBounds` + `did-navigate`/`dom-ready` 事件可用 | ⚠️ OS 级子视图，不参与 DOM 布局：**不跟随 DOM 滚动/CSS transform/z-index 交错**，bounds 需按 `getBoundingClientRect` 手动同步；`clearHistory()`/`isCrashed()` 为降级桩；`did-fail-load`/`render-process-gone` 无 wry 原生事件 |
 
 ## 四、安全模型差异（重要）
 

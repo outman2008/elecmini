@@ -246,12 +246,134 @@ const RUNTIME_JS = String.raw`
 `;
 
 /**
- * 生成完整的初始化脚本 = 运行时 + 目标 preload.js 源码
+ * P6-J：<webview> 自定义元素（Electron webviewTag 契约，纯浏览器 JS）
+ * 独立字符串，避免与主 RUNTIME_JS 的 IIFE 混淆；由 buildInitScript 拼接。
+ * 方法走 ipcRenderer.invoke('__elecmini_webview__'), 事件走 __elecmini_webview_event__ 推送。
+ */
+const WEBVIEW_ELEMENT_JS = String.raw`
+(function () {
+  if (window.__ELECMINI_WEBVIEW__) return;
+  window.__ELECMINI_WEBVIEW__ = true;
+  var CH = '__elecmini_webview__';
+  var EV = '__elecmini_webview_event__';
+  var ipc = (window.__ELECMINI_RUNTIME__ && window.__ELECMINI_RUNTIME__.ipcRenderer) || null;
+  var guestSeq = 0;
+  var registry = {}; // guestId -> element
+
+  function Emitter() { this._ev = {}; }
+  Emitter.prototype.addEventListener = function (t, fn) { (this._ev[t] = this._ev[t] || []).push(fn); };
+  Emitter.prototype.removeEventListener = function (t, fn) {
+    var a = this._ev[t] || []; var i = a.indexOf(fn); if (i >= 0) a.splice(i, 1);
+  };
+  Emitter.prototype.emit = function (t, e) {
+    var a = (this._ev[t] || []).slice();
+    for (var i = 0; i < a.length; i++) { try { a[i](e); } catch (_) {} }
+    var on = this['on' + t]; if (typeof on === 'function') { try { on(e); } catch (_) {} }
+  };
+
+  function call(op, extra) {
+    if (!ipc) return Promise.resolve({ ok: false, reason: 'ipcRenderer unavailable' });
+    var payload = Object.assign({ op: op, guestId: this._guestId }, extra || {});
+    return ipc.invoke(CH, payload);
+  }
+
+  // 自定义元素必须继承 HTMLElement；把 Emitter 的事件方法混入原型
+  class ElectronWebview extends HTMLElement {
+    constructor() {
+      super();
+      this._ev = {};
+      this._guestId = ++guestSeq;
+      this._src = '';
+      this._crashed = false;
+      registry[this._guestId] = this;
+    }
+    connectedCallback() {
+      var self = this;
+      // <webview src="..."> 属性触发创建
+      var src = this.getAttribute('src');
+      if (src) this.loadURL(src);
+      // 等布局稳定后按 getBoundingClientRect 同步 bounds（近似 DOM 定位；不跟随滚动/transform）
+      setTimeout(function () { self._syncBounds(); }, 0);
+    }
+    disconnectedCallback() {
+      call.call(this, 'destroy', {});
+      delete registry[this._guestId];
+    }
+    _syncBounds() {
+      var r = this.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      call.call(this, 'setBounds', {
+        x: Math.round(r.left), y: Math.round(r.top),
+        width: Math.round(r.width), height: Math.round(r.height),
+      });
+    }
+    static get observedAttributes() { return ['src']; }
+    attributeChangedCallback(name, oldVal, newVal) {
+      if (name === 'src' && newVal && newVal !== oldVal) this.loadURL(newVal);
+    }
+    get src() { return this.getAttribute('src') || ''; }
+    set src(v) { this.setAttribute('src', v); }
+
+    // Electron webviewTag API
+    loadURL(url) {
+      this._src = url;
+      var self = this;
+      // 首次 create（带 bounds），后续 loadURL（导航已存在的 guest）
+      var op = this._created ? 'loadURL' : 'create';
+      var extra = this._created ? { url: url } : { url: url, x: 0, y: 0, width: 800, height: 600 };
+      return call.call(this, op, extra).then(function (r) {
+        if (r && r.ok !== false) self._created = true;
+        return !!(r && r.ok !== false);
+      });
+    }
+    getURL() { return call.call(this, 'getURL', {}).then(function (r) { return r && r.url || ''; }); }
+    executeJavaScript(code) { return call.call(this, 'executeJavaScript', { code: code }); }
+    setBounds(x, y, width, height) { return call.call(this, 'setBounds', { x, y, width, height }); }
+    clearHistory() { return Promise.resolve(false); } // degraded：wry 无 guest 历史 API
+    isCrashed() { return this._crashed; } // degraded：wry 无 crash 事件
+    getWebContentsId() { return this._guestId; }
+
+    // guest 事件由 Node 推送，按 guestId 分发
+    _dispatch(type, payload) {
+      var e = Object.assign({}, payload || {});
+      this.emit(type, e);
+    }
+  }
+
+  // 混入 EventEmitter 语义（addEventListener/removeEventListener/emit + onXxx 钩子）
+  ElectronWebview.prototype.addEventListener = Emitter.prototype.addEventListener;
+  ElectronWebview.prototype.removeEventListener = Emitter.prototype.removeEventListener;
+  ElectronWebview.prototype.emit = Emitter.prototype.emit;
+
+  // 必须 try/catch：注入脚本是单个 <script>，define 抛错会中断其后的目标 preload.js
+  try {
+    if (window.customElements && !window.customElements.get('webview')) {
+      window.customElements.define('webview', ElectronWebview);
+    }
+  } catch (e) {
+    try { console.warn('[elecmini] <webview> 注册失败：' + e.message); } catch (_) {}
+  }
+
+  if (ipc && typeof ipc.on === 'function') {
+    ipc.on(EV, function (msg) {
+      if (!msg) return;
+      var el = registry[msg.guestId];
+      if (el) el._dispatch(msg.type, msg.payload);
+    });
+  }
+
+  window.__ELECMINI_WEBVIEW_READY__ = true;
+})();
+`;
+
+/**
+ * 生成完整的初始化脚本 = 运行时 + <webview> 元素 + 目标 preload.js 源码
  * @param {string|null} preloadSource 目标应用 preload.js 的内容
  */
 function buildInitScript(preloadSource) {
-  if (!preloadSource) return RUNTIME_JS;
-  return RUNTIME_JS + '\n/* ---- target preload.js ---- */\n' + preloadSource + '\n';
+  let base = RUNTIME_JS + '\n' + WEBVIEW_ELEMENT_JS;
+  if (!preloadSource) return base;
+  return base + '\n/* ---- target preload.js ---- */\n' + preloadSource + '\n';
 }
 
-module.exports = { RUNTIME_JS, buildInitScript };
+module.exports = { RUNTIME_JS, WEBVIEW_ELEMENT_JS, buildInitScript };

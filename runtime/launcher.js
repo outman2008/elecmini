@@ -31,9 +31,11 @@ function parseArgs(argv) {
   const args = { appDir: null, host: null, debug: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--host') { args.host = argv[++i]; }
-    else if (argv[i] === '--debug') { args.debug = true; }
-    else rest.push(argv[i]);
+    if (argv[i] === '--host') {
+      args.host = argv[++i];
+    } else if (argv[i] === '--debug') {
+      args.debug = true;
+    } else rest.push(argv[i]);
   }
   args.appDir = rest[0] || path.resolve(__dirname, '../tests/baseline');
   return args;
@@ -43,7 +45,9 @@ function resolveEntry(appDir) {
   const pkgPath = path.join(appDir, 'package.json');
   let entry = 'main.js';
   if (fs.existsSync(pkgPath)) {
-    try { entry = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).main || 'main.js'; } catch (_) {}
+    try {
+      entry = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).main || 'main.js';
+    } catch (_) {}
   }
   return path.resolve(appDir, entry);
 }
@@ -97,6 +101,13 @@ async function main() {
   const store = new Store(rpc);
   ctx.init({ rpc, store, appDir, appPath: appDir, baseUrl, closeServer });
 
+  // P6-J：<webview> 桥接（ipcMain handler + host guest 事件转发），在加载应用前注册
+  try {
+    require('./webview-bridge').setupWebviewBridge(rpc);
+  } catch (e) {
+    process.stderr.write(`[ELECMINI:webview] bridge setup 失败：${e.message}\n`);
+  }
+
   // 安装 require('electron') 钩子（加载目标应用前）
   const shimPath = require.resolve('./electron');
   const origLoad = Module._load;
@@ -117,13 +128,12 @@ async function main() {
     rpc.notify('protocol:register', { scheme: 'app', kind: 'file', baseDir: appDir });
     // P2-A：真实显示器 + 系统主题，缓存到 ctx（screen/nativeTheme 同步读镜像）
     try {
-      const [displays, theme] = await Promise.all([
-        rpc.call('sys:displays', {}),
-        rpc.call('sys:theme', {}),
-      ]);
+      const [displays, theme] = await Promise.all([rpc.call('sys:displays', {}), rpc.call('sys:theme', {})]);
       ctx.get().sysDisplays = displays?.displays || null;
       ctx.get().sysTheme = theme || null;
-      process.stderr.write(`[ELECMINI:P2] displays=${ctx.get().sysDisplays?.length || 0} dark=${theme?.shouldUseDarkColors}\n`);
+      process.stderr.write(
+        `[ELECMINI:P2] displays=${ctx.get().sysDisplays?.length || 0} dark=${theme?.shouldUseDarkColors}\n`,
+      );
     } catch (e) {
       process.stderr.write(`[ELECMINI:P2] sysInfo 探测失败（用默认值）：${e.message}\n`);
     }
@@ -133,16 +143,21 @@ async function main() {
   // S4 验收：打印 host 实际能力（WebResourceRequested / CDP / DevTools）
   if (process.env.ELECMINI_S4) {
     rpc.once('host:ready', () => {
-      rpc.call('s4:capabilities', {}).then((caps) => {
-        process.stderr.write(`[ELECMINI:S4] capabilities=${JSON.stringify(caps)}\n`);
-      }).catch((e) => process.stderr.write(`[ELECMINI:S4] capabilities error=${e.message}\n`));
+      rpc
+        .call('s4:capabilities', {})
+        .then((caps) => {
+          process.stderr.write(`[ELECMINI:S4] capabilities=${JSON.stringify(caps)}\n`);
+        })
+        .catch((e) => process.stderr.write(`[ELECMINI:S4] capabilities error=${e.message}\n`));
     });
   }
 
   // host 退出 → sidecar 退出
   rpc.on('exit', ({ code }) => {
     Module._load = origLoad;
-    try { ctx.get().closeServer(); } catch (_) {}
+    try {
+      ctx.get().closeServer();
+    } catch (_) {}
     process.exit(code == null ? 0 : code);
   });
 
@@ -152,7 +167,9 @@ async function main() {
     Module._load(entry, null, true);
   } catch (e) {
     process.stderr.write(`[ELECMINI] 目标应用加载失败：${e.stack || e}\n`);
-    try { child.kill(); } catch (_) {}
+    try {
+      child.kill();
+    } catch (_) {}
     process.exit(1);
   }
 
@@ -164,7 +181,17 @@ async function main() {
 
   // 优雅退出：SIGINT/SIGTERM 转给 host
   for (const sig of ['SIGINT', 'SIGTERM']) {
-    process.on(sig, () => { try { rpc.call('app:quit', {}); } catch (_) {} setTimeout(() => { try { child.kill(); } catch (_) {} process.exit(0); }, 500); });
+    process.on(sig, () => {
+      try {
+        rpc.call('app:quit', {});
+      } catch (_) {}
+      setTimeout(() => {
+        try {
+          child.kill();
+        } catch (_) {}
+        process.exit(0);
+      }, 500);
+    });
   }
 }
 
