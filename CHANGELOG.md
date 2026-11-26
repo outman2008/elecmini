@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tray menu clicks (OpenChamber migration)**: the host emits `tray:menu` with `commandId`, but the JS shim only subscribed to `tray:click`, so tray `Menu.buildFromTemplate` `click` callbacks (e.g. OpenChamber's "Open"/"Quit") never fired. `Tray.setContextMenu` now retains template items and falls back to `label` as the command id when no explicit `id` is set (matching host-side behavior); `bindTrayEvents` dispatches `tray:menu` back to the matching item's `click`. Regression test added in `runtime/modules/modules.test.js` (26/26).
+- **Tray icon dataURL decoding**: `TrayManager::set_image` fed raw PNG bytes to `Icon::from_rgba`, producing a corrupted icon while silently succeeding whenever the byte count happened to match a guessed size. It now decodes PNG/ICO via `image 0.25` before RGBA conversion. Added Rust unit tests for a generated 16x16 PNG data URL and malformed inputs (6/6 total).
+- Verified on Windows 11 / WebView2 133: gate L0, diff contract 42/42, P1/P2 E2E, S4 7/7, DevTools 4/4, security suite 22/22, and an OpenChamber `slim-win32-x64` rebuild (17664 files, SHA256 all match). See `docs/acceptance/Windows-v1.1.0-适配验证.md`.
+
 ## [1.1.0] - 2026-11-26
 
 Feature release: cross-platform DevTools and the five deep-integration gaps that make OpenChamber migration viable on ElecMini.

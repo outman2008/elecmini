@@ -76,19 +76,8 @@ impl TrayManager {
         let Some(tray) = self.icons.get(id) else {
             return Ok(());
         };
-        if let Some(url) = data_url {
-            if let Some(b64) = url.strip_prefix("data:image/png;base64,") {
-                use base64::Engine as _;
-                if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) {
-                    // 尝试常见尺寸；失败则保持原图标
-                    for size in [32u32, 16, 64, 48] {
-                        if let Ok(icon) = Icon::from_rgba(bytes.clone(), size, size) {
-                            let _ = tray.set_icon(Some(icon));
-                            return Ok(());
-                        }
-                    }
-                }
-            }
+        if let Some(icon) = decode_icon(data_url)? {
+            let _ = tray.set_icon(Some(icon));
         }
         Ok(())
     }
@@ -185,6 +174,61 @@ fn emit_tray(out: &Out, kind: &str, tray_id: &str, command_id: &str, bounds: &se
 
 fn rect_json(r: &Rect) -> serde_json::Value {
     json!({ "x": r.position.x, "y": r.position.y, "width": r.size.width, "height": r.size.height })
+}
+
+/// 解码托盘图标 dataURL。PNG/ICO 是压缩格式，必须经 image crate 解码成 RGBA；
+/// 旧实现把 PNG 压缩字节直接当 RGBA 交给 Icon::from_rgba，会生成损坏图标。
+fn decode_icon(data_url: Option<&str>) -> Result<Option<Icon>, String> {
+    let Some(url) = data_url else {
+        return Ok(None);
+    };
+    let b64 = match url.split_once(',') {
+        Some((prefix, payload)) if prefix.starts_with("data:image/") => payload,
+        _ => return Err("invalid tray icon dataURL".to_string()),
+    };
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("tray icon base64: {e}"))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("tray icon decode: {e}"))?
+        .to_rgba8();
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 {
+        return Err("empty tray icon".to_string());
+    }
+    let icon = Icon::from_rgba(img.into_raw(), w, h)
+        .map_err(|e| format!("tray icon rgba: {e}"))?;
+    Ok(Some(icon))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine as _;
+
+    #[test]
+    fn tray_icon_png_data_url_decodes_to_rgba() {
+        let img = image::RgbaImage::from_fn(16, 16, |x, y| {
+            image::Rgba([x as u8 * 16, y as u8 * 16, 128, 255])
+        });
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("encode png");
+        let url = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&png)
+        );
+        assert!(decode_icon(Some(&url)).expect("decode png").is_some());
+    }
+
+    #[test]
+    fn tray_icon_rejects_malformed_data_url() {
+        assert!(decode_icon(None).expect("none").is_none());
+        assert!(decode_icon(Some("not-a-data-url")).is_err());
+        assert!(decode_icon(Some("data:image/png;base64,%%%")).is_err());
+    }
 }
 
 /// 16x16 中性灰方块作为默认图标（RGBA），避免依赖外部资源文件。

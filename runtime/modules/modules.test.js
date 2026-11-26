@@ -37,8 +37,17 @@ const rpc = {
   notify(m, p) {
     calls.push({ m, p, notify: true });
   },
-  on() {},
+  on(evt, fn) {
+    if (!listeners.has(evt)) listeners.set(evt, []);
+    listeners.get(evt).push(fn);
+  },
 };
+
+// 仅供事件回传类单测使用（如 tray:menu）
+const listeners = new Map();
+function emitRpc(evt, payload) {
+  for (const fn of listeners.get(evt) || []) fn(payload);
+}
 
 require('../context').init({
   rpc,
@@ -279,6 +288,42 @@ test('electron.js 导出 autoUpdater 且是 EventEmitter', () => {
   assert.strictEqual(typeof electron.autoUpdater.on, 'function');
   assert.strictEqual(typeof electron.autoUpdater.checkForUpdates, 'function');
   assert.strictEqual(typeof electron.autoUpdater.quitAndInstall, 'function');
+});
+
+// ---------------- tray（P6-H v1.1.0 回归）----------------
+test('Tray.setContextMenu 可由 host tray:menu 事件触发 click', () => {
+  const electron = require('../electron.js');
+  const { Tray, Menu } = electron;
+  const tray = new Tray('data:image/png;base64,AAAA');
+  let clicked = 0;
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        id: 'show',
+        label: 'Show',
+        click: () => {
+          clicked += 1;
+        },
+      },
+      {
+        label: 'Quit',
+        click: () => {
+          clicked += 10;
+        },
+      },
+    ]),
+  );
+  const sent = calls.find((c) => c.m === 'tray:setContextMenu');
+  assert.ok(sent, '未下发 tray:setContextMenu');
+  assert.deepStrictEqual(
+    sent.p.items.map((i) => i.id),
+    ['show', 'Quit'],
+    '模板未给 id 时应退化为 label',
+  );
+  emitRpc('tray:menu', { id: tray._id, commandId: 'show' });
+  emitRpc('tray:menu', { id: tray._id, commandId: 'Quit' });
+  assert.strictEqual(clicked, 11, '托盘菜单 click 未触发');
+  tray.destroy();
 });
 
 // ---------------- runner ----------------

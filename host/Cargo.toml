@@ -23,6 +23,8 @@ wry = { version = "0.52", features = ["devtools"] }
 # 与本项目 tao 0.34、已锁定的 gtk 0.18.2 同系列，避免类型版本冲突。
 tray-icon = "0.24.2"
 muda = "0.19.3"
+# 托盘图标 dataURL（PNG/ICO）解码：PNG 是压缩格式，不能直接当 RGBA 送 Icon::from_rgba
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
