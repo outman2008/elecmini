@@ -59,6 +59,42 @@ class AutoUpdater extends EventEmitter {
     this._cachedRelease = null;
     this._transport = null;
     this._downloading = false;
+    this._cancelled = false;
+    this._activeReq = null;
+    this._cancelEmitted = false;
+  }
+
+  /** 构造取消错误（带机器可判 code，避免靠 message 匹配） */
+  _cancelError() {
+    const e = new Error('download cancelled');
+    e.code = 'ELECMINI_CANCELLED';
+    return e;
+  }
+
+  /** 在下载检查点抛错，让流程尽快退出 */
+  _guard() {
+    if (this._cancelled) throw this._cancelError();
+  }
+
+  /**
+   * 随时停止当前下载：置取消标志 + 中断在途 HTTPS 请求。
+   * 下载循环在每个文件前后及重建节点检查标志，故能立即停下。
+   * 发 download-cancelled 事件（不触发 error）。
+   */
+  cancelDownload() {
+    if (!this._downloading) return false;
+    this._cancelled = true;
+    if (this._activeReq) {
+      try {
+        this._activeReq.destroy();
+      } catch (_) {}
+      this._activeReq = null;
+    }
+    if (!this._cancelEmitted) {
+      this._cancelEmitted = true;
+      this.emit('download-cancelled', { reason: 'user cancelled' });
+    }
+    return true;
   }
 
   setFeedURL(url) {
@@ -74,18 +110,29 @@ class AutoUpdater extends EventEmitter {
   }
 
   async _fetch(url) {
-    if (this._transport) return this._transport(url);
+    if (this._transport) {
+      const r = await this._transport(url);
+      this._guard();
+      return r;
+    }
     const https = require('https');
     return new Promise((resolve, reject) => {
-      https
-        .get(url, (res) => {
-          let data = '';
-          res.on('data', (c) => {
-            data += c;
-          });
-          res.on('end', () => resolve(data));
-        })
-        .on('error', reject);
+      const req = https.get(url, (res) => {
+        let data = '';
+        res.on('data', (c) => {
+          data += c;
+        });
+        res.on('end', () => {
+          this._activeReq = null;
+          if (this._cancelled) return reject(this._cancelError());
+          resolve(data);
+        });
+      });
+      this._activeReq = req;
+      req.on('error', (e) => {
+        this._activeReq = null;
+        reject(this._cancelled ? this._cancelError() : e);
+      });
     });
   }
 
@@ -93,19 +140,27 @@ class AutoUpdater extends EventEmitter {
   async _fetchBinary(url) {
     if (this._transport) {
       const r = await this._transport(url);
+      this._guard();
       if (Buffer.isBuffer(r)) return r;
       if (typeof r === 'string') return Buffer.from(r);
       return Buffer.from(JSON.stringify(r));
     }
     const https = require('https');
     return new Promise((resolve, reject) => {
-      https
-        .get(url, (res) => {
-          const chunks = [];
-          res.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-          res.on('end', () => resolve(Buffer.concat(chunks)));
-        })
-        .on('error', reject);
+      const req = https.get(url, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        res.on('end', () => {
+          this._activeReq = null;
+          if (this._cancelled) return reject(this._cancelError());
+          resolve(Buffer.concat(chunks));
+        });
+      });
+      this._activeReq = req;
+      req.on('error', (e) => {
+        this._activeReq = null;
+        reject(this._cancelled ? this._cancelError() : e);
+      });
     });
   }
 
@@ -205,6 +260,7 @@ class AutoUpdater extends EventEmitter {
     const total = release.files.length;
     const paths = [];
     for (let i = 0; i < total; i++) {
+      this._guard();
       const f = release.files[i];
       const fileUrl = f.url || new URL(f.path, this.feedURL).toString();
       const buf = await this._fetch(fileUrl);
@@ -228,6 +284,8 @@ class AutoUpdater extends EventEmitter {
   async downloadUpdate() {
     if (this._downloading) return [];
     this._downloading = true;
+    this._cancelled = false;
+    this._cancelEmitted = false;
     try {
       const release = this._cachedRelease;
       if (!release || !release.files) {
@@ -238,6 +296,7 @@ class AutoUpdater extends EventEmitter {
       fs.mkdirSync(staging, { recursive: true });
 
       let result = null;
+      this._guard();
       const entry = this._selectedDelta || (await this._selectDelta(release));
       if (entry) {
         try {
@@ -278,10 +337,18 @@ class AutoUpdater extends EventEmitter {
       });
       return result.paths;
     } catch (e) {
+      if (e && e.code === 'ELECMINI_CANCELLED') {
+        if (!this._cancelEmitted) {
+          this._cancelEmitted = true;
+          this.emit('download-cancelled', { reason: 'user cancelled' });
+        }
+        return [];
+      }
       this.emit('error', e);
       return [];
     } finally {
       this._downloading = false;
+      this._activeReq = null;
     }
   }
 

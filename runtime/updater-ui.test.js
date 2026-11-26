@@ -296,6 +296,68 @@ test('action dismiss/unknown 正确处理', async () => {
   updaterUI.disable();
 });
 
+test('silent 模式：发现更新直接进入 downloading，不显示确认卡', async () => {
+  makeCtx();
+  const { updaterUI } = require('./modules/updater-ui');
+  const { au } = resetUpdaters();
+  updaterUI.disable();
+  updaterUI.enable({ autoCheck: false, silent: true, autoDownload: true });
+  // mock 下载，避免真实网络
+  au.downloadUpdate = async () => [];
+  au.emit('update-available', { version: '2.0.0' });
+  assert.strictEqual(updaterUI._state.phase, 'downloading', 'silent 模式跳过 available 确认');
+  updaterUI.disable();
+});
+
+test('stop 动作调用对应 updater 的 cancelDownload', async () => {
+  makeCtx();
+  const { updaterUI } = require('./modules/updater-ui');
+  const { au, ru } = resetUpdaters();
+  let auCancel = 0,
+    ruCancel = 0;
+  au.cancelDownload = () => {
+    auCancel++;
+    return true;
+  };
+  ru.cancelDownload = () => {
+    ruCancel++;
+    return true;
+  };
+  updaterUI.disable();
+  updaterUI.enable({ autoCheck: false });
+  const h = require('./context').get().store.ipcHandlers.get('__elecmini_updater_ui_action__');
+  updaterUI._state.channel = 'full';
+  await h({}, { action: 'stop' });
+  assert.strictEqual(auCancel, 1, '整包下载走 autoUpdater.cancelDownload');
+  updaterUI._state.channel = 'resource';
+  await h({}, { action: 'stop' });
+  assert.strictEqual(ruCancel, 1, '资源下载走 resourceUpdater.cancelDownload');
+  updaterUI.disable();
+});
+
+test('download-cancelled 事件把 UI 切到 stopped', () => {
+  makeCtx();
+  const { updaterUI } = require('./modules/updater-ui');
+  const { au, ru } = resetUpdaters();
+  updaterUI.disable();
+  updaterUI.enable({ autoCheck: false });
+  updaterUI._state.channel = 'full';
+  au.emit('download-cancelled', { reason: 'user cancelled' });
+  assert.strictEqual(updaterUI._state.phase, 'stopped');
+  updaterUI._state.channel = 'resource';
+  ru.emit('download-cancelled', {});
+  assert.strictEqual(updaterUI._state.phase, 'stopped');
+  updaterUI.disable();
+});
+
+test('渲染层 downloading 有停止按钮，stopped 显示已停止', () => {
+  const d = makeDom();
+  d.listeners[d.STATE]({ phase: 'downloading', percent: 30, mode: 'delta' });
+  assert.ok(/data-action="stop"/.test(d.mount.innerHTML), '下载中有停止按钮');
+  d.listeners[d.STATE]({ phase: 'stopped' });
+  assert.ok(/下载已停止/.test(d.mount.innerHTML), '停止后提示');
+});
+
 test('新窗口 did-finish-load 回放当前状态', () => {
   const { store, notifications } = makeCtx();
   const { updaterUI } = require('./modules/updater-ui');

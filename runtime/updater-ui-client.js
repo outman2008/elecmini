@@ -30,6 +30,8 @@ const UPDATER_UI_CLIENT_JS = String.raw`
     error: '更新失败',
     restart: '立即重启',
     update: '开始更新',
+    stop: '停止下载',
+    stopped: '下载已停止',
     retry: '重试',
     close: '关闭'
   };
@@ -160,6 +162,11 @@ const UPDATER_UI_CLIENT_JS = String.raw`
       msg = fmt(state.mode === 'delta' || state.mode === 'resource-delta' ? t('deltaDownloading') : t('downloading'), vars);
       sub = state.mode ? 'mode: ' + escapeHtml(state.mode) : '';
       bar = '<div class="eui-bar"><i style="width:' + (state.percent || 0) + '%"></i></div>';
+      btn = button('stop', t('stop'), true);
+    } else if (p === 'stopped') {
+      cls += ' eui-err';
+      msg = t('stopped');
+      btn = button('retry', t('retry')) + button('dismiss', t('close'), true);
     } else if (p === 'ready') {
       cls += ' eui-ok';
       msg = t('ready');

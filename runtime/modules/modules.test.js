@@ -788,6 +788,82 @@ test('electron.js 导出 resourceUpdater', () => {
   assert.ok(e.resourceUpdater && typeof e.resourceUpdater.checkForResourceUpdates === 'function');
 });
 
+// ---------------- 下载可随时停止 ----------------
+test('autoUpdater.cancelDownload 中断下载并发出 download-cancelled（非 error）', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const update = require('../../pack/update.js');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-cancel-test-'));
+  const dir = path.join(tmp, 'v');
+  fs.mkdirSync(path.join(dir, 'app'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'app/main.js'), 'x'.repeat(200));
+  const release = update.generateRelease(dir, '2.0.0', 'slim');
+  for (const f of release.files) f.url = 'file://' + path.join(dir, f.path);
+  try {
+    const u = new AutoUpdater();
+    u.currentVersion = '1.0.0';
+    u.setFeedURL('https://example.test/update.json');
+    let slow = false;
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url.startsWith('file://')) {
+        // 模拟慢速下载：第一次请求时触发取消
+        if (!slow) {
+          slow = true;
+          u.cancelDownload();
+        }
+        return fs.readFileSync(url.slice(7));
+      }
+      throw new Error('unexpected url ' + url);
+    });
+    let cancelled = 0,
+      errors = 0;
+    u.on('download-cancelled', () => cancelled++);
+    u.on('error', () => errors++);
+    await u.checkForUpdates();
+    const paths = await u.downloadUpdate();
+    assert.strictEqual(paths.length, 0, '取消后不返回下载路径');
+    assert.ok(cancelled >= 1, '应发出 download-cancelled');
+    assert.strictEqual(errors, 0, '取消不应触发 error');
+    assert.strictEqual(u._downloading, false, '取消后标志复位');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resourceUpdater.cancelDownload 中断资源下载', async () => {
+  const { ResourceUpdater } = require('./resource-updater');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-res-cancel-'));
+  try {
+    const u = new ResourceUpdater();
+    u._explicitCode = 0;
+    u.setFeedURL('https://example.test/update.json');
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') {
+        return { resource: { resourceCode: 5, file: 'r.zip' } };
+      }
+      if (url === 'https://example.test/r.zip') {
+        u.cancelDownload();
+        return Buffer.from('PKfake');
+      }
+      throw new Error('unexpected url ' + url);
+    });
+    let cancelled = 0;
+    u.on('download-cancelled', () => cancelled++);
+    await u.checkForResourceUpdates();
+    const paths = await u.downloadResourceUpdate();
+    assert.strictEqual(paths.length, 0, '取消后不返回路径');
+    assert.ok(cancelled >= 1, '应发出 download-cancelled');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // ---------------- runner ----------------
 (async () => {
   let pass = 0;

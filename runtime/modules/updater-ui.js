@@ -29,6 +29,7 @@ class UpdaterUI extends EventEmitter {
       autoCheck: true,
       autoDownload: true,
       autoApplyResource: true,
+      silent: false,
       theme: 'system',
       position: 'bottom-right',
       texts: {},
@@ -160,8 +161,9 @@ class UpdaterUI extends EventEmitter {
     };
     on('checking-for-update', () => this._patch({ phase: 'checking', channel: 'full' }));
     on('update-available', (info) => {
+      // silent 模式：跳过「发现新版本」确认卡，直接进入下载，全程无需用户点击
       this._patch({
-        phase: 'available',
+        phase: this._opts.silent && this._opts.autoDownload ? 'downloading' : 'available',
         channel: 'full',
         version: (info && info.version) || '',
         percent: 0,
@@ -187,6 +189,9 @@ class UpdaterUI extends EventEmitter {
         version: (info && info.version) || this._state.version,
       });
     });
+    on('download-cancelled', () => {
+      if (this._state.channel === 'full') this._patch({ phase: 'stopped', percent: 0 });
+    });
     on('delta-fallback', (d) => this._patch({ message: 'delta fallback: ' + ((d && d.reason) || '') }));
     on('error', (e) => this._patch({ phase: 'error', message: String((e && e.message) || e) }));
   }
@@ -201,7 +206,7 @@ class UpdaterUI extends EventEmitter {
     on('resource-checking', () => this._patch({ phase: 'checking', channel: 'resource' }));
     on('resource-available', (info) => {
       this._patch({
-        phase: 'available',
+        phase: this._opts.silent && this._opts.autoApplyResource ? 'downloading' : 'available',
         channel: 'resource',
         version: String((info && info.resourceCode) || ''),
         percent: 0,
@@ -227,6 +232,9 @@ class UpdaterUI extends EventEmitter {
         channel: 'resource',
         version: String((r && r.resourceCode) || this._state.version),
       });
+    });
+    on('download-cancelled', () => {
+      if (this._state.channel === 'resource') this._patch({ phase: 'stopped', percent: 0 });
     });
     on('error', (e) => this._patch({ phase: 'error', message: String((e && e.message) || e) }));
   }
@@ -281,6 +289,13 @@ class UpdaterUI extends EventEmitter {
       const au = this._auto();
       if (au) await au.downloadUpdate();
       return { ok: true };
+    }
+    if (action === 'stop') {
+      const au = this._auto();
+      const ru = this._res();
+      const stopped =
+        (this._state.channel === 'resource' && ru ? ru.cancelDownload() : false) || (au ? au.cancelDownload() : false);
+      return { ok: !!stopped };
     }
     if (action === 'retry') {
       const au = this._auto();

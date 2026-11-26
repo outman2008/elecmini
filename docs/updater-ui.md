@@ -32,10 +32,28 @@ updaterUI.disable();
 |---|---|---|---|
 | 启动静默检查 | `checking` | 不显示 | `checkForUpdates()` / `checkForResourceUpdates()` |
 | 发现新版本 | `available` | 角标「发现新版本 vX」+「开始更新」 | 自动下载（`autoDownload` / `autoApplyResource`） |
-| 下载中 | `downloading` | 百分比 + 进度条，增量标记「增量下载」 | delta 优先，失败回退全量 |
+| 下载中 | `downloading` | 百分比 + 进度条 +「停止下载」，增量标记「增量下载」 | delta 优先，失败回退全量 |
+| 已停止 | `stopped` | 「下载已停止」+「重试」 | 中断在途请求，不应用任何变更 |
 | 资源更新完成 | `applied` | 「资源已更新」，4 秒后消失 | 原子替换 `app/` + reload 窗口，**不重启** |
 | 整包更新完成 | `ready` | 「更新已就绪，重启后生效」+「立即重启」 | 用户点击 → `quitAndInstall()` |
 | 失败 | `error` | 错误文案 +「重试」 | 可点重试 |
+
+## 静默自动下载 & 随时停止
+
+**静默下载**：默认 `autoDownload` / `autoApplyResource` 为真时，发现更新后自动下载、无需用户确认。设 `silent: true` 可连「发现新版本」确认卡都跳过——角标直接进入下载进度，全程零点击：
+
+```jsonc
+{ "elecmini": { "updaterUI": { "silent": true } } }
+```
+
+**随时停止**：下载中角标常驻「停止下载」按钮。点击后底层 `autoUpdater.cancelDownload()` / `resourceUpdater.cancelDownload()` 会真正**中断在途 HTTPS 请求**（不是仅忽略结果），下载循环在每个检查点退出，发出 `download-cancelled`（不触发 `error`），UI 切到「下载已停止」，可点「重试」重新开始。取消不会应用任何文件变更。
+
+```js
+const { autoUpdater, resourceUpdater } = require('electron');
+autoUpdater.cancelDownload();      // 整包：返回 boolean，是否在下载中
+resourceUpdater.cancelDownload();  // 资源：同上
+// 监听 u.on('download-cancelled', ...) 获知取消
+```
 
 ## 多端一致
 
