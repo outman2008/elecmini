@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-26
+
+Feature release: cross-platform DevTools and the five deep-integration gaps that make OpenChamber migration viable on ElecMini.
+
 ### Changed
 
 - **Installer-size-first positioning**: README (both languages), `llms.txt` and promo drafts now lead with the size win — Electron **~274MB** vs ElecMini Slim **~84MB**, about **1/3 the size (~3x smaller)** — and drop the previous PSS ≈107% "no memory gain" caveat from the top-level pitch. The bundled-engine comparison (274MB → 2.3MB, ~118x) is retained with its methodology note; no benchmark numbers were changed.
