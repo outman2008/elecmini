@@ -391,6 +391,46 @@ test('autoUpdater 增量失败自动回退全量下载', async () => {
   }
 });
 
+test('autoUpdater 用 versionCode 比较：预发布/build 元数据不颠倒升级判断', () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const u = new AutoUpdater();
+  // 展示串含 #?空格+ 等，但 code 是纯整数；比较只认 code
+  assert.strictEqual(u._isNewer('2.0.0#x', '1.0.0+meta', 2000000, 1000000), true);
+  assert.strictEqual(u._isNewer('1.0.0+build.5', '1.0.0', 1000000, 1000000), false, 'code 相等不应升级');
+  // 无 code 时回退旧字符串比较（兼容旧 manifest）
+  assert.strictEqual(u._isNewer('1.1.0', '1.0.0'), true);
+});
+
+test('autoUpdater 由展示串推导 currentVersionCode，且显式 code 优先', () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const u = new AutoUpdater();
+  u.currentVersion = '1.2.3-beta.1+build.5';
+  assert.strictEqual(u.currentVersionCode, 1002003, '预发布/build 不参与推导');
+  u.currentVersionCode = 2000001;
+  assert.strictEqual(u.currentVersionCode, 2000001, '显式 code 优先');
+});
+
+test('autoUpdater 按 versionCode 选差分包（展示串含特殊字符不依赖）', async () => {
+  const { AutoUpdater } = require('./auto-updater');
+  const u = new AutoUpdater();
+  u.currentVersion = '1.0.0#frag?q=1';
+  u.currentVersionCode = 1000000;
+  const list = [
+    {
+      fromVersion: '1.0.0#frag?q=1',
+      fromCode: 1000000,
+      toVersion: '3.0.0+meta',
+      toCode: 3000000,
+      file: 'c3000000-c1000000.diff',
+    },
+  ];
+  // 通过 _selectDelta 走真实选择逻辑；注意它依赖 _cachedRelease 之外无副作用
+  u._cachedRelease = { version: '3.0.0+meta', versionCode: 3000000, files: [] };
+  u._setTransport(async () => list); // _resolveDeltas 不会用 transport（内嵌数组），仅占位
+  const picked = await u._selectDelta({ deltas: list, version: '3.0.0+meta' });
+  assert.ok(picked && picked.file === 'c3000000-c1000000.diff');
+});
+
 // ---------------- tray（P6-H v1.1.0 回归）----------------
 test('Tray.setContextMenu 可由 host tray:menu 事件触发 click', () => {
   const electron = require('../electron.js');

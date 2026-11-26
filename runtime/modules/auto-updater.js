@@ -39,11 +39,20 @@ function getDelta() {
   return deltaModule;
 }
 
+let versionModule = null;
+function getVersion() {
+  if (!versionModule) versionModule = require('../../pack/version.js');
+  return versionModule;
+}
+
 class AutoUpdater extends EventEmitter {
   constructor() {
     super();
     this.feedURL = process.env.ELECMINI_UPDATE_URL || '';
     this.currentVersion = process.env.ELECMINI_APP_VERSION || '0.0.0';
+    // versionCode 是机器键：显式值优先；未设置时由 _currentCode() 从 currentVersion 动态推导，
+    // 这样构造后再改 currentVersion（测试常见用法）也能拿到一致的 code。
+    this._explicitVersionCode = getVersion().parseVersionCode(process.env.ELECMINI_APP_VERSION_CODE);
     this.autoDownload = false;
     this.autoInstallOnAppQuit = true;
     this.allowPrerelease = false;
@@ -93,7 +102,7 @@ class AutoUpdater extends EventEmitter {
       const release = typeof raw === 'string' ? JSON.parse(raw) : raw;
       this._cachedRelease = release;
       this._selectedDelta = await this._selectDelta(release); // 选好差分包，downloadUpdate 复用
-      const newer = this._isNewer(release.version, this.currentVersion);
+      const newer = this._isNewer(release.version, this.currentVersion, release.versionCode, this.currentVersionCode);
       if (!newer) {
         this.emit('update-not-available', { version: release.version });
         return null;
@@ -131,7 +140,7 @@ class AutoUpdater extends EventEmitter {
     try {
       const list = await this._resolveDeltas(release);
       if (!list || !list.length) return null;
-      const picked = getDelta().selectDelta(list, this.currentVersion);
+      const picked = getDelta().selectDelta(list, this.currentVersion, this.currentVersionCode);
       if (picked) this.emit('delta-selected', { from: this.currentVersion, to: release.version, file: picked.file });
       return picked || null;
     } catch (e) {
@@ -274,8 +283,31 @@ class AutoUpdater extends EventEmitter {
     }
   }
 
-  /** 半语义化版本比较：只比数值段，忽略 prerelease（够用于更新决策） */
-  _isNewer(a, b) {
+  /** 当前展示版本推导出的 versionCode（仅在没有显式 code 时用） */
+  _deriveCode() {
+    return getVersion().deriveVersionCode(this.currentVersion);
+  }
+
+  /** 机器键：显式 versionCode 优先，否则从当前展示版本推导 */
+  get currentVersionCode() {
+    return this._explicitVersionCode !== null && this._explicitVersionCode !== undefined
+      ? this._explicitVersionCode
+      : this._deriveCode();
+  }
+
+  set currentVersionCode(value) {
+    this._explicitVersionCode = getVersion().parseVersionCode(value);
+  }
+
+  /**
+   * 判断 a 是否比 b 新。优先用 versionCode（纯整数）比较：
+   *   versionCode 不受展示串里的 -beta / +build / # ? / 空格影响。
+   * 两边 code 任一缺失时回退到旧的半语义化字符串比较（兼容无 code 的旧 manifest）。
+   */
+  _isNewer(a, b, aCode, bCode) {
+    const ca = getVersion().parseVersionCode(aCode);
+    const cb = getVersion().parseVersionCode(bCode);
+    if (ca !== null && cb !== null) return ca > cb;
     const pa = String(a)
       .split(/[.-]/)
       .map((x) => parseInt(x, 10) || 0);

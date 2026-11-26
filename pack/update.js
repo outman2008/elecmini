@@ -40,6 +40,7 @@ function generateRelease(dir, version, sku, options = {}) {
   const release = {
     format: 'elecmini-update/1',
     version,
+    versionCode: options.versionCode !== undefined ? options.versionCode : undefined,
     sku,
     generatedAt: new Date().toISOString(),
     updater: options.updater || 'velopack', // velopack | sparkle
@@ -64,9 +65,8 @@ function verifySignature(release, publicKeyPem) {
   const data = Buffer.from(release.bundleSha256, 'utf8');
   try {
     const value = Buffer.from(sig.value, 'base64');
-    const ok = sig.algorithm === 'ed25519'
-      ? crypto.verify(null, data, pem, value)
-      : crypto.verify('sha256', data, pem, value);
+    const ok =
+      sig.algorithm === 'ed25519' ? crypto.verify(null, data, pem, value) : crypto.verify('sha256', data, pem, value);
     return ok ? { ok: true } : { ok: false, problems: ['signature verification failed'] };
   } catch (e) {
     return { ok: false, problems: [`signature error: ${e.message}`] };
@@ -78,7 +78,10 @@ function verifyRelease(release, downloadDir, publicKeyPem) {
   const problems = [];
   for (const f of release.files) {
     const p = path.join(downloadDir, f.path);
-    if (!fs.existsSync(p)) { problems.push(`missing: ${f.path}`); continue; }
+    if (!fs.existsSync(p)) {
+      problems.push(`missing: ${f.path}`);
+      continue;
+    }
     if (sha256(p) !== f.sha256) problems.push(`hash mismatch: ${f.path}`);
   }
   // 重算 bundle 摘要：防「改 files 但保留旧 bundleSha256」的篡改
@@ -152,7 +155,8 @@ function selfTest() {
   const sigBad = verifyRelease({ ...signed, bundleSha256: 'deadbeef'.repeat(8) }, app, pem);
   const fileBad = verifyRelease(
     { ...signed, files: rel.files.map((f) => ({ ...f, sha256: 'x' + f.sha256.slice(1) })) },
-    app, pem,
+    app,
+    pem,
   );
 
   const staging = path.join(tmp, 'staging');
@@ -176,7 +180,10 @@ function selfTest() {
     ['失败回滚成功', applyFail.ok === false && applyFail.rolledBack === true],
   ];
   let pass = 0;
-  for (const [name, ok] of cases) { console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}`); if (ok) pass++; }
+  for (const [name, ok] of cases) {
+    console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}`);
+    if (ok) pass++;
+  }
   console.log(`\n更新器逻辑：${pass}/${cases.length} passed`);
   fs.rmSync(tmp, { recursive: true, force: true });
   process.exit(pass === cases.length ? 0 : 1);
@@ -185,11 +192,20 @@ function selfTest() {
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--self-test')) return selfTest();
-  const get = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
+  const get = (flag) => {
+    const i = argv.indexOf(flag);
+    return i >= 0 ? argv[i + 1] : null;
+  };
   if (argv.includes('--gen')) {
-    const dir = get('--dir'), out = get('--out');
-    if (!dir || !out) { console.error('需要 --dir 与 --out'); process.exit(2); }
-    const release = generateRelease(dir, get('--version') || '0.0.0', get('--sku') || 'slim', { updater: get('--updater') });
+    const dir = get('--dir'),
+      out = get('--out');
+    if (!dir || !out) {
+      console.error('需要 --dir 与 --out');
+      process.exit(2);
+    }
+    const release = generateRelease(dir, get('--version') || '0.0.0', get('--sku') || 'slim', {
+      updater: get('--updater'),
+    });
     fs.writeFileSync(out, JSON.stringify(release, null, 2));
     console.log(`[UPDATE] 生成 ${out}：${release.files.length} files, bundle=${release.bundleSha256.slice(0, 12)}...`);
     return;

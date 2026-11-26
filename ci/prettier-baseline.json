@@ -15,7 +15,6 @@
   "pack/telemetry-report.js": "5357b2335486c6b9dec92360abde395c3245c9d9065c0dbab06e78c1e5036da7",
   "pack/telemetry.test.js": "4fabf59d25e5060bc68431f949a040b92c5237b05d2bf8227ae8e2684dfbcc0f",
   "pack/templates/launcher.js": "52a46fe54258eada6012d3037cb9416983ccc1b1c6f8e28e20d7cf8042f3de04",
-  "pack/update.js": "b129a797f06d426f52639d57a3df4dd65dd786ab1632dac37cb282baa8785b13",
   "pack/watch-webview.js": "75d39f98995c5ab343ca43a93c6b76654d0443e01d15260208def68451963fff",
   "runtime/context.js": "63e2091687fd9133404d5b1e3b113ff6736bb491ecfcedeac9c35f726bef6d0c",
   "runtime/contract-data.js": "4f8ac832233bb7c1a0d639c708aa0328c1b61a52504918f91e1c601e640e631c",

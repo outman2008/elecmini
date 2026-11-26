@@ -37,6 +37,7 @@ function parseArgs(argv) {
     dryRun: false,
     nodeBin: null,
     version: null,
+    versionCode: null,
     noDelta: false,
     versionsDir: null,
     deltasDir: null,
@@ -61,6 +62,9 @@ function parseArgs(argv) {
       case '--version':
         a.version = argv[++i];
         break;
+      case '--version-code':
+        a.versionCode = argv[++i];
+        break;
       case '--versions-dir':
         a.versionsDir = argv[++i];
         break;
@@ -78,16 +82,19 @@ function parseArgs(argv) {
   return a;
 }
 
-/** 版本来源：--version > package.json > config.json（后者可能过时） */
-function resolveVersion(explicit) {
-  if (explicit) return explicit;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-    if (pkg.version) return pkg.version;
-  } catch (_) {
-    /* ignore */
+/** 版本来源：--version > package.json > config.json（后者可能过时）；code 来源：--version-code > 推导 */
+function resolveVersionInfo(explicit, explicitCode) {
+  let version = explicit;
+  if (!version) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+      if (pkg.version) version = pkg.version;
+    } catch (_) {
+      /* ignore */
+    }
   }
-  return CONFIG.version;
+  if (!version) version = CONFIG.version;
+  return require('./version.js').resolveVersionInfo(version, explicitCode);
 }
 
 function sha256(file) {
@@ -162,7 +169,7 @@ function ensureLauncherTemplate() {
   }
 }
 
-function buildSku(sku, target, outDir, nodeBin, dryRun, version) {
+function buildSku(sku, target, outDir, nodeBin, dryRun, versionInfo) {
   const plan = planLayout(sku, target, nodeBin);
   const skuDir = path.join(outDir, `${sku}-${target}`);
   console.log(`\n=== SKU ${sku} / ${target} ===`);
@@ -206,7 +213,8 @@ function buildSku(sku, target, outDir, nodeBin, dryRun, version) {
 
   const manifest = {
     name: CONFIG.name,
-    version: version || CONFIG.version,
+    version: versionInfo.version,
+    versionCode: versionInfo.versionCode,
     sku,
     target,
     builtAt: new Date().toISOString(),
@@ -267,16 +275,17 @@ function main() {
   ensureLauncherTemplate();
   const nodeBin = resolveNode(args.nodeBin);
   const outDir = path.resolve(ROOT, args.out);
-  const version = resolveVersion(args.version);
+  const versionInfo = resolveVersionInfo(args.version, args.versionCode);
   if (!args.dryRun) fs.mkdirSync(outDir, { recursive: true });
 
   const skus = args.sku === 'both' ? ['slim', 'full'] : [args.sku];
   const results = [];
-  for (const sku of skus) results.push(buildSku(sku, args.target, outDir, nodeBin, args.dryRun, version));
+  for (const sku of skus) results.push(buildSku(sku, args.target, outDir, nodeBin, args.dryRun, versionInfo));
 
   const index = {
     generatedAt: new Date().toISOString(),
-    version,
+    version: versionInfo.version,
+    versionCode: versionInfo.versionCode,
     builds: results.map((r) => ({ sku: r.sku, target: r.target, dir: r.dir, dryRun: !!r.dryRun })),
   };
   if (!args.dryRun) fs.writeFileSync(path.join(outDir, 'build-index.json'), JSON.stringify(index, null, 2));
@@ -285,12 +294,14 @@ function main() {
   // 默认生成差分包：归档版本 -> 自动生成 latest<-old 差分包 -> 写回 update.json
   if (!args.dryRun && !args.noDelta) {
     const delta = require('./delta.js');
-    const deltaOpts = { builds: results, outDir, version };
+    const deltaOpts = { builds: results, outDir, version: versionInfo.version, versionCode: versionInfo.versionCode };
     if (args.versionsDir) deltaOpts.versionsDir = path.resolve(ROOT, args.versionsDir);
     if (args.deltasDir) deltaOpts.deltasDir = path.resolve(ROOT, args.deltasDir);
     const result = delta.packageAndGenerateDeltas(deltaOpts);
-    delta.attachDeltasToUpdate(outDir, version, result.summary, results);
-    console.log(`[BUILD] 差分包已生成并写入 update.json（${result.summary.deltas.length} 个，--no-delta 可关闭）`);
+    delta.attachDeltasToUpdate(outDir, versionInfo, result.summary, results);
+    console.log(
+      `[BUILD] v${versionInfo.version} (code=${versionInfo.versionCode}) 差分包已生成并写入 update.json（${result.summary.deltas.length} 个，--no-delta 可关闭）`,
+    );
   } else if (args.noDelta) {
     console.log('[BUILD] --no-delta：跳过差分包生成');
   }

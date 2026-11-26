@@ -27,6 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const versionMod = require('./version.js');
 
 const DEFAULT_BLOCK = 4096;
 const DELTA_FORMAT = 'elecmini-delta/1';
@@ -216,40 +217,53 @@ function batchGenerate(versionsDir, outDir, options = {}) {
     .map((e) => {
       const dir = path.join(versionsDir, e.name);
       const mf = path.join(dir, versionFile);
-      // 版本快照目录名即版本号时无需 update.json；有则优先读其中的 version 字段
       let version = e.name;
+      let versionCode = versionMod.deriveVersionCode(e.name.replace(/^c/, ''));
       if (fs.existsSync(mf)) {
         try {
-          version = JSON.parse(fs.readFileSync(mf, 'utf8')).version || e.name;
+          const rel = JSON.parse(fs.readFileSync(mf, 'utf8'));
+          version = rel.version || version;
+          // 显式 versionCode 优先；无则回退从展示串/目录名推导（兼容旧快照）
+          versionCode = versionMod.parseVersionCode(rel.versionCode) ?? versionMod.deriveVersionCode(version);
         } catch (_) {
-          version = e.name;
+          /* 保留基于目录名的推导 */
         }
       }
-      return { dir, version, name: e.name };
+      // 机器键（code）用于排序与文件命名；展示串仅写入 delta 元数据
+      return { dir, version, versionCode, name: e.name };
     })
-    .sort((a, b) => cmpVersion(a.version, b.version));
+    .sort((a, b) => {
+      const byCode = versionMod.compareVersionCode(a.versionCode, b.versionCode);
+      return byCode !== 0 ? byCode : cmpVersion(a.version, b.version);
+    });
   // 首次打包只有 1 个版本：无旧版本可比，写出空索引即可（autoUpdater 自动走全量）
   if (entries.length === 0) throw new Error('--batch 未找到任何版本快照目录');
   const latest = entries[entries.length - 1];
   const deltas = [];
   for (const old of entries.slice(0, -1)) {
-    const fileName = `${latest.version}-${old.version}.diff`;
+    // 差分包文件名只用 versionCode（纯数字），杜绝特殊字符进入路径/URL
+    const fileName = `c${latest.versionCode}-c${old.versionCode}.diff`;
     const diffPath = path.join(outDir, fileName);
     const delta = generateDirDelta(old.dir, latest.dir, old.version, latest.version, options);
     fs.writeFileSync(diffPath, JSON.stringify(delta));
     deltas.push({
       fromVersion: old.version,
       toVersion: latest.version,
+      fromCode: old.versionCode,
+      toCode: latest.versionCode,
       file: fileName,
       sha256: sha256file(diffPath),
       bytes: fs.statSync(diffPath).size,
       stats: delta.stats,
     });
-    console.log(`[DELTA] ${old.version} -> ${latest.version}: ${fileName} (${deltas[deltas.length - 1].bytes} bytes)`);
+    console.log(
+      `[DELTA] v${old.version}(c${old.versionCode}) -> v${latest.version}(c${latest.versionCode}): ${fileName} (${deltas[deltas.length - 1].bytes} bytes)`,
+    );
   }
   const manifest = {
     format: 'elecmini-deltas/1',
     toVersion: latest.version,
+    toCode: latest.versionCode,
     generatedAt: new Date().toISOString(),
     deltas,
   };
@@ -264,20 +278,23 @@ function getUpdate() {
   return updateModule;
 }
 
-/** 把一次打包产物归档成版本快照：<versionsDir>/<sku>-<target>/<version>/ */
+/** 把一次打包产物归档成版本快照：<versionsDir>/<sku>-<target>/c<versionCode>/ */
 function archiveBuild(build, versionsDir, version, options = {}) {
   const group = `${build.sku}-${build.target}`;
-  const dest = path.join(versionsDir, group, version);
+  const code = versionMod.parseVersionCode(options.versionCode) ?? versionMod.deriveVersionCode(version);
+  // 归档目录名用纯数字 code（c 前缀），展示串里的特殊字符绝不进入文件系统
+  const dest = path.join(versionsDir, group, `c${code}`);
   if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.cpSync(build.dir, dest, { recursive: true });
-  // 快照自带 update.json（release manifest），batchGenerate 据此读 version
+  // 快照自带 update.json（release manifest），batchGenerate 据此读 version/versionCode
   const release = getUpdate().generateRelease(dest, version, build.sku, {
+    versionCode: code,
     updater: options.updater,
     channel: options.channel,
   });
   fs.writeFileSync(path.join(dest, 'update.json'), JSON.stringify(release, null, 2));
-  return { group, version, dir: dest, release };
+  return { group, version, versionCode: code, dir: dest, release };
 }
 
 /**
@@ -286,6 +303,7 @@ function archiveBuild(build, versionsDir, version, options = {}) {
  */
 function packageAndGenerateDeltas(opts) {
   const { builds, outDir, version } = opts;
+  const code = versionMod.parseVersionCode(opts.versionCode) ?? versionMod.deriveVersionCode(version);
   const versionsDir = opts.versionsDir || path.join(outDir, 'versions');
   const deltasDir = opts.deltasDir || path.join(outDir, 'deltas');
   fs.mkdirSync(versionsDir, { recursive: true });
@@ -314,8 +332,9 @@ function packageAndGenerateDeltas(opts) {
   const summary = {
     format: 'elecmini-deltas/1',
     toVersion: version,
+    toCode: code,
     generatedAt: new Date().toISOString(),
-    groups: indexes.map((i) => ({ group: i.group, toVersion: i.toVersion, count: i.deltas.length })),
+    groups: indexes.map((i) => ({ group: i.group, toVersion: i.toVersion, toCode: i.toCode, count: i.deltas.length })),
     deltas: allDeltas,
   };
   fs.writeFileSync(path.join(deltasDir, 'deltas.json'), JSON.stringify(summary, null, 2));
@@ -324,13 +343,16 @@ function packageAndGenerateDeltas(opts) {
 }
 
 /** 把差分包索引写入 update.json 的 deltas 字段；每次打包都基于最新产物刷新 release */
-function attachDeltasToUpdate(outDir, version, summary, builds) {
+function attachDeltasToUpdate(outDir, versionInfo, summary, builds) {
   const updatePath = path.join(outDir, 'update.json');
   const first = (builds || []).find((b) => !b.dryRun && b.dir);
   if (!first) return null;
+  // versionInfo 兼容两种入参：{version,versionCode} 对象，或旧的字符串 version
+  const vInfo =
+    typeof versionInfo === 'object' && versionInfo !== null ? versionInfo : versionMod.resolveVersionInfo(versionInfo);
   // 始终重算 files[]/bundleSha256/version，避免清单停留在首次打包的版本；
   // 旧签名基于旧摘要，重算后必然失效，故不保留（由 sign 步骤重新签名）。
-  const release = getUpdate().generateRelease(first.dir, version, first.sku);
+  const release = getUpdate().generateRelease(first.dir, vInfo.version, first.sku, { versionCode: vInfo.versionCode });
   if (fs.existsSync(updatePath)) {
     try {
       const prev = JSON.parse(fs.readFileSync(updatePath, 'utf8'));
@@ -343,6 +365,8 @@ function attachDeltasToUpdate(outDir, version, summary, builds) {
     release.deltas = summary.deltas.map((d) => ({
       fromVersion: d.fromVersion,
       toVersion: d.toVersion,
+      fromCode: d.fromCode,
+      toCode: d.toCode,
       file: `deltas/${d.file}`,
       sha256: d.sha256,
       bytes: d.bytes,
@@ -353,9 +377,17 @@ function attachDeltasToUpdate(outDir, version, summary, builds) {
   return release;
 }
 
-/** 从 deltas 索引中按当前版本选择差分包（精确匹配 fromVersion） */
-function selectDelta(deltasIndex, currentVersion) {
+/**
+ * 从 deltas 索引中选差分包。
+ * 优先按 versionCode（纯整数）匹配 fromCode —— 展示串的 # ? / 空格等不影响；
+ * 无 code 的旧索引则回退按 fromVersion 字符串精确匹配（向后兼容）。
+ */
+function selectDelta(deltasIndex, currentVersion, currentCode) {
   const list = Array.isArray(deltasIndex) ? deltasIndex : (deltasIndex && deltasIndex.deltas) || [];
+  const code = versionMod.parseVersionCode(currentCode);
+  if (code !== null && list.some((d) => d.fromCode !== undefined)) {
+    return list.find((d) => versionMod.parseVersionCode(d.fromCode) === code) || null;
+  }
   return list.find((d) => d.fromVersion === currentVersion) || null;
 }
 
@@ -443,15 +475,17 @@ function selfTest() {
   const deltasDir = path.join(tmp, 'deltas');
   const idx = batchGenerate(versions, deltasDir);
   check(
-    '批量生成 3-1.diff 与 3-2.diff',
+    '批量生成差分包（文件名用 code）',
     () =>
       idx.deltas.length === 2 &&
-      idx.deltas.some((d) => d.file === '3.0.0-1.0.0.diff') &&
-      idx.deltas.some((d) => d.file === '3.0.0-2.0.0.diff'),
+      idx.deltas.some((d) => d.file === 'c3000000-c1000000.diff') &&
+      idx.deltas.some((d) => d.file === 'c3000000-c2000000.diff'),
   );
-  check('selectDelta: v1 选 3-1', () => selectDelta(idx, '1.0.0').file.includes('1.0.0'));
-  check('selectDelta: v2 选 3-2', () => selectDelta(idx, '2.0.0').file.includes('2.0.0'));
-  check('selectDelta: 无匹配返回 null', () => selectDelta(idx, '9.9.9') === null);
+  check('deltas 条目带 fromCode/toCode', () => idx.deltas.every((d) => d.fromCode > 0 && d.toCode === 3000000));
+  check('selectDelta: v1 选 3-1（按 code）', () => selectDelta(idx, '1.0.0', 1000000).file.includes('c1000000'));
+  check('selectDelta: v2 选 3-2（按 code）', () => selectDelta(idx, '2.0.0', 2000000).file.includes('c2000000'));
+  check('selectDelta: 按旧版 version 字符串回退', () => selectDelta(idx, '1.0.0').file.includes('c1000000'));
+  check('selectDelta: 无匹配返回 null', () => selectDelta(idx, '9.9.9', 9999999) === null);
   // 篡改检测
   const tampered = JSON.parse(JSON.stringify(d13));
   tampered.files.find((f) => f.path === 'new.txt').data = Buffer.from('hacked\n').toString('base64');
@@ -479,17 +513,26 @@ function selfTest() {
     outDir: packOut,
     version: '3.0.0',
   });
-  check('打包归档生成 3-1.diff 与 3-2.diff', () => {
+  check('打包归档生成 code 命名的差分包', () => {
     const dDir = path.join(packOut, 'deltas', 'slim-linux-x64');
-    return fs.existsSync(path.join(dDir, '3.0.0-1.0.0.diff')) && fs.existsSync(path.join(dDir, '3.0.0-2.0.0.diff'));
+    return (
+      fs.existsSync(path.join(dDir, 'c3000000-c1000000.diff')) &&
+      fs.existsSync(path.join(dDir, 'c3000000-c2000000.diff'))
+    );
   });
   check('打包差分包 file 带 sku-target 前缀', () =>
     packResult.summary.deltas.every((d) => d.file.startsWith('slim-linux-x64/')),
   );
-  const attached = attachDeltasToUpdate(packOut, '3.0.0', packResult.summary, vDirs);
-  check('update.json 内嵌 deltas 且 file 带 deltas/ 前缀', () => {
+  const attached = attachDeltasToUpdate(packOut, versionMod.resolveVersionInfo('3.0.0'), packResult.summary, vDirs);
+  check('update.json 内嵌 deltas（含 code）且 file 带 deltas/ 前缀', () => {
     const u = JSON.parse(fs.readFileSync(path.join(packOut, 'update.json'), 'utf8'));
-    return attached.version === '3.0.0' && u.deltas.length === 2 && u.deltas[0].file.startsWith('deltas/');
+    return (
+      attached.version === '3.0.0' &&
+      u.versionCode === 3000000 &&
+      u.deltas.length === 2 &&
+      u.deltas[0].file.startsWith('deltas/') &&
+      u.deltas[0].fromCode === 1000000
+    );
   });
   check('首次打包仅 1 版本时优雅降级为空索引', () => {
     const soloOut = path.join(tmp, 'soloOut');
@@ -503,6 +546,21 @@ function selfTest() {
     });
     return r.summary.deltas.length === 0;
   });
+
+  // 特殊字符展示版本：# ? 空格 + 等绝不能进入归档路径/差分包名/URL
+  const weirdOut = path.join(tmp, 'weirdOut');
+  const weirdVer = '2.0.0-rc.1#frag?q=1 +meta';
+  const weirdCode = 2000001;
+  const arch = archiveBuild({ sku: 'slim', target: 'linux-x64', dir: v1 }, path.join(weirdOut, 'versions'), weirdVer, {
+    versionCode: weirdCode,
+  });
+  check('特殊字符版本：归档目录只用 code', () => arch.dir.endsWith(path.join('slim-linux-x64', 'c2000001')));
+  check('特殊字符版本：update.json 保留展示串但带 code', () => {
+    const u = JSON.parse(fs.readFileSync(path.join(arch.dir, 'update.json'), 'utf8'));
+    return u.version === weirdVer && u.versionCode === weirdCode;
+  });
+  const weirdSel = selectDelta([{ fromVersion: weirdVer, fromCode: weirdCode, file: 'x.diff' }], 'anything', weirdCode);
+  check('特殊字符版本：按 code 匹配不依赖展示串', () => weirdSel && weirdSel.file === 'x.diff');
 
   let pass = 0;
   for (const [name, ok, msg] of cases) {

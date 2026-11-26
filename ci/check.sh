@@ -70,7 +70,10 @@ run "兼容基线自测" node compat/check.js --self-test
 # 5) P3-C 更新器自测（含签名校验 + 回滚）
 run "更新器自测" node pack/update.js --self-test
 
-# 5.1) 增量更新器自测（块级 delta + 差分包选择 + 篡改检测）
+# 5.1) 版本双轨自测（versionCode 解析/推导/比较，特殊字符不污染机器键）
+run "版本双轨自测" node pack/version.js --self-test
+
+# 5.2) 增量更新器自测（块级 delta + 差分包选择 + 篡改检测 + 打包闭环）
 run "增量更新器自测" node pack/delta.js --self-test
 
 # 5.5) P3-C 签名脚本自测（命令构造正确性）

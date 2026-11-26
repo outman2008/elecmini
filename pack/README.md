@@ -10,7 +10,8 @@
 | `build.js` | 打包构建：组装运行时 + 应用 + 更新清单，产出 Slim / Full 包，并默认归档版本、自动生成差分包 |
 | `sign.js` | Ed25519 代码签名与验签（含自检） |
 | `update.js` | 自动更新：manifest 校验、验签、原子替换、失败回滚 |
-| `delta.js` | 增量更新：块级差分包生成/应用、版本自动选择、篡改检测；失败自动回退全量 |
+| `delta.js` | 增量更新：块级差分包生成/应用、按 versionCode 自动选包、篡改检测；失败自动回退全量 |
+| `version.js` | 版本双轨：`version`(展示串) + `versionCode`(单调整数机器键)，解析/推导/比较 |
 | `gray.js` | 灰度分桶（按匿名设备 ID 决定是否放量） |
 | `telemetry-report.js` | 遥测聚合：JSONL 样本 → L0 覆盖率分布 + Go/No-Go 判定 |
 | `fetch-webview2.js` | 拉取 WebView2 版本数据 |
@@ -22,11 +23,14 @@
 ## 常用命令
 
 ```bash
-# 打包（默认自动生成差分包，版本默认取 package.json，可用 --version 覆盖）
-node pack/build.js --app examples/minimal --version 1.2.0
-#   → dist/versions/<sku>-<target>/<version>/   每次构建的快照
-#   → dist/deltas/<sku>-<target>/<new>-<old>.diff + deltas.json
-#   → dist/update.json 内嵌 deltas 索引，autoUpdater 自动选包
+# 打包（默认自动生成差分包）
+node pack/build.js --app examples/minimal --version 1.2.0 --version-code 1200
+#   version 默认取 package.json；versionCode 缺省时从 version 三段数值推导
+#   → dist/versions/<sku>-<target>/c<versionCode>/    每次构建的快照（目录名纯数字）
+#   → dist/deltas/<sku>-<target>/c<to>-c<from>.diff + deltas.json
+#   → dist/update.json 内嵌 deltas（含 fromCode/toCode），autoUpdater 按 code 自动选包
+# 展示串可含特殊字符（# ? 空格 + 等），绝不进入路径/文件名/URL：
+node pack/build.js --app examples/minimal --version '1.2.3-beta #frag' --version-code 1201
 # 首次打包只有 1 个版本时生成空索引，客户端自动走全量
 node pack/build.js --app examples/minimal --no-delta   # 关闭差分包生成
 
