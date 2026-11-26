@@ -20,8 +20,23 @@
 
 ## 差分包怎么生成
 
+**打包时自动完成（默认）：** `pack/build.js` 在每次打包后做三件事，无需手动干预：
+
+1. 归档产物：`dist/versions/<sku>-<target>/<version>/`（快照自带 `update.json`）
+2. 对同一 SKU 的每个旧版本生成 `dist/deltas/<sku>-<target>/<new>-<old>.diff` + `deltas.json`
+3. 把差分包索引写进 `dist/update.json` 的 `deltas` 字段（每次打包都基于最新产物刷新 `files[]`/`version`）
+
 ```bash
-# 批量：扫描 versions/ 下各子目录的 update.json，取最新版本为 target
+node pack/build.js --version 1.2.0        # 版本号默认取 package.json，可用 --version 覆盖
+node pack/build.js --no-delta             # 关闭自动差分（不归档、不生成 diff）
+```
+
+首次打包只有 1 个版本时生成空索引，`autoUpdater` 自动走全量；从第二个版本起
+自动生成 `latest←old` 差分包。
+
+**单独批量生成**（不重新打包）：扫描 `versions/` 下各子目录，取最新版本为 target：
+
+```bash
 node pack/delta.js --batch --versions dist/versions --out dist/deltas
 ```
 
@@ -82,6 +97,6 @@ manifest：
 ## 自检
 
 ```bash
-node pack/delta.js --self-test   # 12 项：块命中、还原、篡改、v1→3/v2→3、选择、回退检测
+node pack/delta.js --self-test   # 16 项：块命中、还原、篡改、v1→3/v2→3、选择、打包归档→差分→update.json 闭环
 npm test                          # 含增量更新器自测 + autoUpdater 增量/回退单测
 ```

@@ -9,6 +9,13 @@
  * 用法：
  *   node pack/build.js --sku both --target linux-x64 --out dist
  *   node pack/build.js --sku slim --target win32-x64 --dry-run
+ *   node pack/build.js --version 1.2.0 --out dist   # 指定版本号（默认取 package.json）
+ *
+ * 打包后默认生成差分包（Ubuntu 式 latest<-old）：
+ *   1. 把本次产物归档为 dist/versions/<sku>-<target>/<version>/
+ *   2. 对该 SKU 的每个旧版本生成 <new>-<old>.diff + deltas.json
+ *   3. 把 deltas 索引写进 dist/update.json，供 autoUpdater 自动选包
+ *   首次打包只有 1 个版本时优雅降级为空索引（客户端走全量）。用 --no-delta 关闭。
  *
  * 说明：本脚本产出"可组装的目录布局 + manifest + 启动器"，不执行平台签名/安装包编译
  * （视图 3 平台签名需真实凭据，见 P3-C；wine 无法产出真实 dmg/NSIS 安装包）。
@@ -22,18 +29,65 @@ const ROOT = path.resolve(__dirname, '..');
 const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
 
 function parseArgs(argv) {
-  const a = { sku: 'both', target: 'linux-x64', out: 'dist', app: null, dryRun: false, nodeBin: null };
+  const a = {
+    sku: 'both',
+    target: 'linux-x64',
+    out: 'dist',
+    app: null,
+    dryRun: false,
+    nodeBin: null,
+    version: null,
+    noDelta: false,
+    versionsDir: null,
+    deltasDir: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
-      case '--sku': a.sku = argv[++i]; break;
-      case '--target': a.target = argv[++i]; break;
-      case '--out': a.out = argv[++i]; break;
-      case '--app': a.app = argv[++i]; break;
-      case '--node': a.nodeBin = argv[++i]; break;
-      case '--dry-run': a.dryRun = true; break;
+      case '--sku':
+        a.sku = argv[++i];
+        break;
+      case '--target':
+        a.target = argv[++i];
+        break;
+      case '--out':
+        a.out = argv[++i];
+        break;
+      case '--app':
+        a.app = argv[++i];
+        break;
+      case '--node':
+        a.nodeBin = argv[++i];
+        break;
+      case '--version':
+        a.version = argv[++i];
+        break;
+      case '--versions-dir':
+        a.versionsDir = argv[++i];
+        break;
+      case '--deltas-dir':
+        a.deltasDir = argv[++i];
+        break;
+      case '--no-delta':
+        a.noDelta = true;
+        break;
+      case '--dry-run':
+        a.dryRun = true;
+        break;
     }
   }
   return a;
+}
+
+/** 版本来源：--version > package.json > config.json（后者可能过时） */
+function resolveVersion(explicit) {
+  if (explicit) return explicit;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    if (pkg.version) return pkg.version;
+  } catch (_) {
+    /* ignore */
+  }
+  return CONFIG.version;
 }
 
 function sha256(file) {
@@ -81,7 +135,12 @@ function planLayout(sku, target, nodeBin) {
     { kind: 'file', src: path.join(__dirname, 'templates/launcher.js'), dest: 'launcher.js', required: true },
   ];
   if (sku === 'full') {
-    items.push({ kind: 'placeholder', dest: 'webview2/WebView2RuntimeOffline.exe', note: '需下载 WebView2 离线引导包（P3-B 准备脚本）', required: false });
+    items.push({
+      kind: 'placeholder',
+      dest: 'webview2/WebView2RuntimeOffline.exe',
+      note: '需下载 WebView2 离线引导包（P3-B 准备脚本）',
+      required: false,
+    });
   }
   return { items, formats: t.formats, appDir };
 }
@@ -90,17 +149,20 @@ function ensureLauncherTemplate() {
   const tpl = path.join(__dirname, 'templates/launcher.js');
   if (!fs.existsSync(tpl)) {
     fs.mkdirSync(path.dirname(tpl), { recursive: true });
-    fs.writeFileSync(tpl, [
-      '#!/usr/bin/env node',
-      '// ElecMini P3 — 产物启动器：调用 runtime/launcher.js 加载 app/',
-      "const path = require('path');",
-      "require(path.join(__dirname, 'runtime/launcher.js')).main();",
-      '',
-    ].join('\n'));
+    fs.writeFileSync(
+      tpl,
+      [
+        '#!/usr/bin/env node',
+        '// ElecMini P3 — 产物启动器：调用 runtime/launcher.js 加载 app/',
+        "const path = require('path');",
+        "require(path.join(__dirname, 'runtime/launcher.js')).main();",
+        '',
+      ].join('\n'),
+    );
   }
 }
 
-function buildSku(sku, target, outDir, nodeBin, dryRun) {
+function buildSku(sku, target, outDir, nodeBin, dryRun, version) {
   const plan = planLayout(sku, target, nodeBin);
   const skuDir = path.join(outDir, `${sku}-${target}`);
   console.log(`\n=== SKU ${sku} / ${target} ===`);
@@ -144,7 +206,7 @@ function buildSku(sku, target, outDir, nodeBin, dryRun) {
 
   const manifest = {
     name: CONFIG.name,
-    version: CONFIG.version,
+    version: version || CONFIG.version,
     sku,
     target,
     builtAt: new Date().toISOString(),
@@ -170,7 +232,10 @@ function verifyBuild(skuDir) {
   const problems = [];
   for (const f of m.files) {
     const p = path.join(skuDir, f.path);
-    if (!fs.existsSync(p)) { problems.push(`missing: ${f.path}`); continue; }
+    if (!fs.existsSync(p)) {
+      problems.push(`missing: ${f.path}`);
+      continue;
+    }
     if (sha256(p) !== f.sha256) problems.push(`hash mismatch: ${f.path}`);
   }
   for (const req of ['launcher.js', 'runtime/launcher.js', 'bin/node']) {
@@ -187,9 +252,14 @@ function main() {
   const vi = argv.indexOf('--verify');
   if (vi >= 0) {
     const dir = argv[vi + 1];
-    if (!dir) { console.error('用法：node pack/build.js --verify <skuDir>'); process.exit(2); }
+    if (!dir) {
+      console.error('用法：node pack/build.js --verify <skuDir>');
+      process.exit(2);
+    }
     const r = verifyBuild(path.resolve(ROOT, dir));
-    console.log(`[BUILD-VERIFY] ${r.ok ? '通过' : '失败'}（${r.files || 0} files）${r.problems.length ? '：' + r.problems.join('; ') : ''}`);
+    console.log(
+      `[BUILD-VERIFY] ${r.ok ? '通过' : '失败'}（${r.files || 0} files）${r.problems.length ? '：' + r.problems.join('; ') : ''}`,
+    );
     process.exit(r.ok ? 0 : 1);
   }
 
@@ -197,19 +267,33 @@ function main() {
   ensureLauncherTemplate();
   const nodeBin = resolveNode(args.nodeBin);
   const outDir = path.resolve(ROOT, args.out);
+  const version = resolveVersion(args.version);
   if (!args.dryRun) fs.mkdirSync(outDir, { recursive: true });
 
   const skus = args.sku === 'both' ? ['slim', 'full'] : [args.sku];
   const results = [];
-  for (const sku of skus) results.push(buildSku(sku, args.target, outDir, nodeBin, args.dryRun));
+  for (const sku of skus) results.push(buildSku(sku, args.target, outDir, nodeBin, args.dryRun, version));
 
   const index = {
     generatedAt: new Date().toISOString(),
-    version: CONFIG.version,
+    version,
     builds: results.map((r) => ({ sku: r.sku, target: r.target, dir: r.dir, dryRun: !!r.dryRun })),
   };
   if (!args.dryRun) fs.writeFileSync(path.join(outDir, 'build-index.json'), JSON.stringify(index, null, 2));
   console.log('\n打包完成（目录布局阶段）：', outDir);
+
+  // 默认生成差分包：归档版本 -> 自动生成 latest<-old 差分包 -> 写回 update.json
+  if (!args.dryRun && !args.noDelta) {
+    const delta = require('./delta.js');
+    const deltaOpts = { builds: results, outDir, version };
+    if (args.versionsDir) deltaOpts.versionsDir = path.resolve(ROOT, args.versionsDir);
+    if (args.deltasDir) deltaOpts.deltasDir = path.resolve(ROOT, args.deltasDir);
+    const result = delta.packageAndGenerateDeltas(deltaOpts);
+    delta.attachDeltasToUpdate(outDir, version, result.summary, results);
+    console.log(`[BUILD] 差分包已生成并写入 update.json（${result.summary.deltas.length} 个，--no-delta 可关闭）`);
+  } else if (args.noDelta) {
+    console.log('[BUILD] --no-delta：跳过差分包生成');
+  }
 }
 
 if (require.main === module) main();

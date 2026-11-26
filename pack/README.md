@@ -7,7 +7,7 @@
 
 | 文件 | 作用 |
 |---|---|
-| `build.js` | 打包构建：组装运行时 + 应用 + 更新清单，产出 Slim / Full 包 |
+| `build.js` | 打包构建：组装运行时 + 应用 + 更新清单，产出 Slim / Full 包，并默认归档版本、自动生成差分包 |
 | `sign.js` | Ed25519 代码签名与验签（含自检） |
 | `update.js` | 自动更新：manifest 校验、验签、原子替换、失败回滚 |
 | `delta.js` | 增量更新：块级差分包生成/应用、版本自动选择、篡改检测；失败自动回退全量 |
@@ -22,14 +22,20 @@
 ## 常用命令
 
 ```bash
-node pack/build.js --app examples/minimal
+# 打包（默认自动生成差分包，版本默认取 package.json，可用 --version 覆盖）
+node pack/build.js --app examples/minimal --version 1.2.0
+#   → dist/versions/<sku>-<target>/<version>/   每次构建的快照
+#   → dist/deltas/<sku>-<target>/<new>-<old>.diff + deltas.json
+#   → dist/update.json 内嵌 deltas 索引，autoUpdater 自动选包
+# 首次打包只有 1 个版本时生成空索引，客户端自动走全量
+node pack/build.js --app examples/minimal --no-delta   # 关闭差分包生成
+
 node pack/sign.js --verify <bundle>
 node pack/telemetry-report.js --dir <telemetryDir> --min-samples 385
 
-# 增量更新：服务器上有 v1/v2/v3（各含 update.json），自动生成 3-1.diff / 3-2.diff
+# 单独批量生成（不需重新打包）：服务器上有 v1/v2/v3，自动生成 3-1.diff / 3-2.diff
 node pack/delta.js --batch --versions dist/versions --out dist/deltas
 # 客户端按当前版本自动选包：v1 -> 3-1.diff，v2 -> 3-2.diff
-# 差分包里的 deltas 数组写入 update.json 的 deltas 字段即可启用
 ```
 
 ## SKU 说明

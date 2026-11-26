@@ -8,7 +8,6 @@
   "migrate/api-surface/gen-contract.js": "498e4f050e602a8096e5a3417e4d2a0f44dfaeccf50479bf750668b6e12be568",
   "migrate/assess.js": "8003ba2c6862c476fd88bc9f394725dcd3c32701f31e7a013f26ef1d63b02ca2",
   "migrate/gen-probe.js": "c2f382a8262edd65925eccc5e0367a9fdace7c78d0b2334ab35029bb4179f701",
-  "pack/build.js": "85b160408e6fb7dd54d376e7c7c572df02c1b0beab3e3aa426fb1be9c9bbdb14",
   "pack/fetch-webview2.js": "efc189a0c56380e0b5464e4ba4935978810c63d74fbf56388e7cfdcae19c8656",
   "pack/gate-flow.test.js": "871e40d660a2ffbf2b044733713204e958938837a7d8076194f687ee8babfbec",
   "pack/gray.js": "51fd050dc1fd306a1e4c7f4eee58dda3feb148399d791ad133bc7822be308de4",

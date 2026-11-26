@@ -209,19 +209,27 @@ function applyDirDelta(baseDir, delta, outDir) {
 /** 批量：扫描 versionsDir 下各子目录的 update.json，取最新版本为 to，为每旧版本生成 diff */
 function batchGenerate(versionsDir, outDir, options = {}) {
   fs.mkdirSync(outDir, { recursive: true });
+  const versionFile = options.versionFile || 'update.json';
   const entries = fs
     .readdirSync(versionsDir, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => {
       const dir = path.join(versionsDir, e.name);
-      const mf = path.join(dir, 'update.json');
-      if (!fs.existsSync(mf)) return null;
-      const rel = JSON.parse(fs.readFileSync(mf, 'utf8'));
-      return { dir, version: rel.version || e.name, name: e.name };
+      const mf = path.join(dir, versionFile);
+      // 版本快照目录名即版本号时无需 update.json；有则优先读其中的 version 字段
+      let version = e.name;
+      if (fs.existsSync(mf)) {
+        try {
+          version = JSON.parse(fs.readFileSync(mf, 'utf8')).version || e.name;
+        } catch (_) {
+          version = e.name;
+        }
+      }
+      return { dir, version, name: e.name };
     })
-    .filter(Boolean)
     .sort((a, b) => cmpVersion(a.version, b.version));
-  if (entries.length < 2) throw new Error('--batch 至少需要两个含 update.json 的版本目录');
+  // 首次打包只有 1 个版本：无旧版本可比，写出空索引即可（autoUpdater 自动走全量）
+  if (entries.length === 0) throw new Error('--batch 未找到任何版本快照目录');
   const latest = entries[entries.length - 1];
   const deltas = [];
   for (const old of entries.slice(0, -1)) {
@@ -248,6 +256,101 @@ function batchGenerate(versionsDir, outDir, options = {}) {
   fs.writeFileSync(path.join(outDir, 'deltas.json'), JSON.stringify(manifest, null, 2));
   console.log(`[DELTA] 索引写入 ${path.join(outDir, 'deltas.json')}`);
   return manifest;
+}
+
+let updateModule = null;
+function getUpdate() {
+  if (!updateModule) updateModule = require('./update.js');
+  return updateModule;
+}
+
+/** 把一次打包产物归档成版本快照：<versionsDir>/<sku>-<target>/<version>/ */
+function archiveBuild(build, versionsDir, version, options = {}) {
+  const group = `${build.sku}-${build.target}`;
+  const dest = path.join(versionsDir, group, version);
+  if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.cpSync(build.dir, dest, { recursive: true });
+  // 快照自带 update.json（release manifest），batchGenerate 据此读 version
+  const release = getUpdate().generateRelease(dest, version, build.sku, {
+    updater: options.updater,
+    channel: options.channel,
+  });
+  fs.writeFileSync(path.join(dest, 'update.json'), JSON.stringify(release, null, 2));
+  return { group, version, dir: dest, release };
+}
+
+/**
+ * 打包后默认生成差分包：归档本次产物 -> 每组版本生成 latest<-old 差分包 -> 汇总索引。
+ * opts: { builds:[{sku,target,dir}], outDir, version, versionsDir?, deltasDir? }
+ */
+function packageAndGenerateDeltas(opts) {
+  const { builds, outDir, version } = opts;
+  const versionsDir = opts.versionsDir || path.join(outDir, 'versions');
+  const deltasDir = opts.deltasDir || path.join(outDir, 'deltas');
+  fs.mkdirSync(versionsDir, { recursive: true });
+  fs.mkdirSync(deltasDir, { recursive: true });
+
+  const archived = [];
+  for (const build of builds || []) {
+    if (build.dryRun || !build.dir) continue;
+    archived.push(archiveBuild(build, versionsDir, version, opts));
+  }
+
+  const groups = [...new Set(archived.map((a) => a.group))];
+  const indexes = [];
+  for (const group of groups) {
+    const index = batchGenerate(path.join(versionsDir, group), path.join(deltasDir, group), opts);
+    indexes.push({ group, ...index });
+  }
+
+  const allDeltas = [];
+  for (const idx of indexes) {
+    for (const d of idx.deltas) {
+      // file 相对 deltasDir，update.json 内引用时加 deltas/ 前缀
+      allDeltas.push({ ...d, file: `${idx.group}/${d.file}` });
+    }
+  }
+  const summary = {
+    format: 'elecmini-deltas/1',
+    toVersion: version,
+    generatedAt: new Date().toISOString(),
+    groups: indexes.map((i) => ({ group: i.group, toVersion: i.toVersion, count: i.deltas.length })),
+    deltas: allDeltas,
+  };
+  fs.writeFileSync(path.join(deltasDir, 'deltas.json'), JSON.stringify(summary, null, 2));
+  console.log(`[DELTA] 打包归档 ${archived.length} 个快照，生成 ${allDeltas.length} 个差分包 → ${deltasDir}`);
+  return { archived, indexes, summary, deltasDir, versionsDir };
+}
+
+/** 把差分包索引写入 update.json 的 deltas 字段；每次打包都基于最新产物刷新 release */
+function attachDeltasToUpdate(outDir, version, summary, builds) {
+  const updatePath = path.join(outDir, 'update.json');
+  const first = (builds || []).find((b) => !b.dryRun && b.dir);
+  if (!first) return null;
+  // 始终重算 files[]/bundleSha256/version，避免清单停留在首次打包的版本；
+  // 旧签名基于旧摘要，重算后必然失效，故不保留（由 sign 步骤重新签名）。
+  const release = getUpdate().generateRelease(first.dir, version, first.sku);
+  if (fs.existsSync(updatePath)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(updatePath, 'utf8'));
+      if (prev.releaseNotes) release.releaseNotes = prev.releaseNotes;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  if (summary && summary.deltas && summary.deltas.length) {
+    release.deltas = summary.deltas.map((d) => ({
+      fromVersion: d.fromVersion,
+      toVersion: d.toVersion,
+      file: `deltas/${d.file}`,
+      sha256: d.sha256,
+      bytes: d.bytes,
+      stats: d.stats,
+    }));
+  }
+  fs.writeFileSync(updatePath, JSON.stringify(release, null, 2));
+  return release;
 }
 
 /** 从 deltas 索引中按当前版本选择差分包（精确匹配 fromVersion） */
@@ -361,6 +464,46 @@ function selfTest() {
     }
   });
 
+  // 打包闭环：归档 -> 自动生成差分包 -> update.json 内嵌索引
+  const packOut = path.join(tmp, 'packOut');
+  const vDirs = [v1, v2, v3].map((dir, i) => ({ sku: 'slim', target: 'linux-x64', dir }));
+  // 把三个版本按打包时序逐个归档成快照（模拟三次打包）
+  const versionsRoot = path.join(packOut, 'versions');
+  fs.mkdirSync(versionsRoot, { recursive: true });
+  for (const ver of ['1.0.0', '2.0.0', '3.0.0']) {
+    const src = path.join(versions, ver);
+    archiveBuild({ sku: 'slim', target: 'linux-x64', dir: src }, versionsRoot, ver);
+  }
+  const packResult = packageAndGenerateDeltas({
+    builds: [{ sku: 'slim', target: 'linux-x64', dir: v3 }],
+    outDir: packOut,
+    version: '3.0.0',
+  });
+  check('打包归档生成 3-1.diff 与 3-2.diff', () => {
+    const dDir = path.join(packOut, 'deltas', 'slim-linux-x64');
+    return fs.existsSync(path.join(dDir, '3.0.0-1.0.0.diff')) && fs.existsSync(path.join(dDir, '3.0.0-2.0.0.diff'));
+  });
+  check('打包差分包 file 带 sku-target 前缀', () =>
+    packResult.summary.deltas.every((d) => d.file.startsWith('slim-linux-x64/')),
+  );
+  const attached = attachDeltasToUpdate(packOut, '3.0.0', packResult.summary, vDirs);
+  check('update.json 内嵌 deltas 且 file 带 deltas/ 前缀', () => {
+    const u = JSON.parse(fs.readFileSync(path.join(packOut, 'update.json'), 'utf8'));
+    return attached.version === '3.0.0' && u.deltas.length === 2 && u.deltas[0].file.startsWith('deltas/');
+  });
+  check('首次打包仅 1 版本时优雅降级为空索引', () => {
+    const soloOut = path.join(tmp, 'soloOut');
+    const soloVersions = path.join(soloOut, 'versions', 'slim-linux-x64');
+    fs.mkdirSync(soloVersions, { recursive: true });
+    archiveBuild({ sku: 'slim', target: 'linux-x64', dir: v1 }, path.join(soloOut, 'versions'), '1.0.0');
+    const r = packageAndGenerateDeltas({
+      builds: [{ sku: 'slim', target: 'linux-x64', dir: v1 }],
+      outDir: soloOut,
+      version: '1.0.0',
+    });
+    return r.summary.deltas.length === 0;
+  });
+
   let pass = 0;
   for (const [name, ok, msg] of cases) {
     console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}${msg ? ' - ' + msg : ''}`);
@@ -425,6 +568,9 @@ module.exports = {
   generateDirDelta,
   applyDirDelta,
   batchGenerate,
+  archiveBuild,
+  packageAndGenerateDeltas,
+  attachDeltasToUpdate,
   selectDelta,
   cmpVersion,
   sha256file,
