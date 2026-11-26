@@ -24,6 +24,7 @@ const path = require('path');
 const crypto = require('crypto');
 const versionMod = require('./version.js');
 const zipMod = require('./zip.js');
+const deltaMod = require('./delta.js');
 
 const RESOURCE_FORMAT = 'elecmini-resource/1';
 
@@ -149,10 +150,120 @@ function extractResourceZip(zipBuf, stagingDir) {
   return entries.map((e) => e.name);
 }
 
+/** 资源归档目录名只用 code（c 前缀 + 纯数字），杜绝展示串特殊字符进入路径 */
+function resourceSnapDir(versionsDir, code) {
+  return path.join(versionsDir, `c${code}`);
+}
+
+/**
+ * 归档一次打包的 app/ 为资源快照（纯 app/ 内容，不含 resource.json）。
+ * <resourcesDir>/<group>/versions/c<code>/
+ */
+function archiveResourceSnapshot(build, resourcesDir, resourceCode) {
+  const group = `${build.sku}-${build.target}`;
+  const versionsDir = path.join(resourcesDir, group, 'versions');
+  const dest = resourceSnapDir(versionsDir, resourceCode);
+  if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
+  fs.mkdirSync(dest, { recursive: true });
+  const appDir = path.join(build.dir, 'app');
+  if (fs.existsSync(appDir)) fs.cpSync(appDir, dest, { recursive: true });
+  // 清掉可能残留的 resource.json（客户端替换时写入，非打包产物）
+  const marker = path.join(dest, 'resource.json');
+  if (fs.existsSync(marker)) fs.rmSync(marker, { force: true });
+  return { group, versionCode: resourceCode, dir: dest };
+}
+
+/**
+ * 对某 group 的资源快照生成 latest<-old 差分包（复用 delta.js 块级算法）。
+ * 文件名与归档目录一样只用 code：c<to>-c<from>.zip，写入 <resourcesDir>/<group>/deltas/。
+ */
+function batchGenerateResourceDeltas(resourcesDir, group, options = {}) {
+  const versionsDir = path.join(resourcesDir, group, 'versions');
+  const deltasDir = path.join(resourcesDir, group, 'deltas');
+  fs.mkdirSync(deltasDir, { recursive: true });
+  const entries = fs
+    .readdirSync(versionsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && /^c\d+$/.test(e.name))
+    .map((e) => ({ dir: path.join(versionsDir, e.name), code: versionMod.parseVersionCode(e.name.slice(1)) }))
+    .filter((e) => e.code !== null)
+    .sort((a, b) => versionMod.compareVersionCode(a.code, b.code));
+  if (entries.length === 0) return { group, deltas: [] };
+  const latest = entries[entries.length - 1];
+  const deltas = [];
+  for (const old of entries.slice(0, -1)) {
+    const fileName = `c${latest.code}-c${old.code}.zip`;
+    const zipPath = path.join(deltasDir, fileName);
+    const delta = deltaMod.generateDirDelta(old.dir, latest.dir, String(old.code), String(latest.code), options);
+    fs.writeFileSync(zipPath, deltaMod.packDelta(delta));
+    deltas.push({
+      fromCode: old.code,
+      toCode: latest.code,
+      file: `${group}/deltas/${fileName}`,
+      encoding: 'zip',
+      sha256: sha256file(zipPath),
+      bytes: fs.statSync(zipPath).size,
+      uncompressedBytes: Buffer.byteLength(JSON.stringify(delta)),
+      stats: delta.stats,
+    });
+    console.log(
+      `[RES-DELTA] ${group}: c${old.code} -> c${latest.code}: ${fileName} (${deltas[deltas.length - 1].bytes} bytes)`,
+    );
+  }
+  fs.writeFileSync(
+    path.join(deltasDir, 'deltas.json'),
+    JSON.stringify({ format: 'elecmini-resource-deltas/1', group, toCode: latest.code, deltas }, null, 2),
+  );
+  return { group, toCode: latest.code, deltas };
+}
+
+/**
+ * 打包编排：归档本次 app/ 快照 -> 对每组生成 latest<-old 资源差分包。
+ * opts: { builds, resourceCode, resourcesDir?, blockSize? }
+ * 返回 { archived, summary:{ format, deltas:[...] } }
+ */
+function packageAndGenerateResourceDeltas(opts) {
+  const { builds, resourceCode } = opts;
+  const resourcesDir = opts.resourcesDir || path.join(opts.outDir || process.cwd(), 'resources');
+  fs.mkdirSync(resourcesDir, { recursive: true });
+  const archived = [];
+  for (const build of builds || []) {
+    if (build.dryRun || !build.dir) continue;
+    archived.push(archiveResourceSnapshot(build, resourcesDir, resourceCode));
+  }
+  const groups = [...new Set(archived.map((a) => a.group))];
+  const allDeltas = [];
+  for (const group of groups) {
+    const idx = batchGenerateResourceDeltas(resourcesDir, group, { blockSize: opts.blockSize });
+    allDeltas.push(...idx.deltas);
+  }
+  const summary = {
+    format: 'elecmini-resource-deltas/1',
+    toCode: resourceCode,
+    generatedAt: new Date().toISOString(),
+    deltas: allDeltas,
+  };
+  fs.writeFileSync(path.join(resourcesDir, 'deltas.json'), JSON.stringify(summary, null, 2));
+  console.log(
+    `[RES-DELTA] 归档 ${archived.length} 个资源快照，生成 ${allDeltas.length} 个资源差分包 → ${resourcesDir}`,
+  );
+  return { archived, summary, resourcesDir };
+}
+
+/**
+ * 从资源差分包索引按当前 resourceCode 选包（机器键 fromCode 精确匹配）。
+ * 入参可为数组或 {deltas:[...]}；无 code 时回退 fromCode 严格相等。
+ */
+function selectResourceDelta(deltasIndex, currentCode) {
+  const list = Array.isArray(deltasIndex) ? deltasIndex : (deltasIndex && deltasIndex.deltas) || [];
+  const code = versionMod.parseVersionCode(currentCode);
+  if (code === null) return null;
+  return list.find((d) => versionMod.parseVersionCode(d.fromCode) === code) || null;
+}
+
 /**
  * 打包后生成资源包并写入 update.json 的 resource(s) 字段。
  * 由 build.js 在 delta.attachDeltasToUpdate 之后调用——因为后者会重建 update.json。
- * opts: { builds:[{sku,target,dir}], outDir, version, resourceCode, privateKey?, resourcesDir? }
+ * opts: { builds:[{sku,target,dir}], outDir, version, resourceCode, privateKey?, resourcesDir?, deltaSummary? }
  * 返回 { resources:[...], resourcesDir }
  */
 function attachResourcesToUpdate(outDir, options) {
@@ -186,6 +297,10 @@ function attachResourcesToUpdate(outDir, options) {
     const zipRel = `${group}/resource-c${mf.resourceCode}.zip`;
     fs.writeFileSync(path.join(resourcesDir, zipRel), zr.zip);
     fs.writeFileSync(path.join(groupDir, 'resource.json'), JSON.stringify(mf, null, 2));
+    // 该 group 适用的资源差分包（从旧 resourceCode 升级到本次）
+    const groupDeltas = ((options.deltaSummary && options.deltaSummary.deltas) || []).filter(
+      (d) => d.file && d.file.startsWith(`${group}/`),
+    );
     resources.push({
       format: RESOURCE_FORMAT,
       sku: build.sku,
@@ -199,6 +314,7 @@ function attachResourcesToUpdate(outDir, options) {
       entryCount: zr.entryCount,
       bundleSha256: mf.bundleSha256,
       signature: mf.signature || null,
+      resourceDeltas: groupDeltas.length ? groupDeltas : undefined,
     });
     console.log(`[RESOURCE] ${group}: code=${mf.resourceCode} ${zr.entryCount} files, ${zr.bytes} bytes → ${zipRel}`);
   }
@@ -299,6 +415,81 @@ function selfTest() {
     );
   });
 
+  // 资源增量：归档快照 -> 生成 latest<-old 差分包 -> 按 code 选包 -> 重建一致
+  const deltaTmp = path.join(tmp, 'deltaRes');
+  const mkSnap = (code, body) => {
+    const buildDir = path.join(deltaTmp, `build${code}`);
+    fs.mkdirSync(path.join(buildDir, 'app'), { recursive: true });
+    fs.writeFileSync(path.join(buildDir, 'app', 'index.html'), body);
+    fs.writeFileSync(path.join(buildDir, 'app', 'huge.js'), `// v${code}\n` + 'y'.repeat(12000));
+    return { sku: 'slim', target: 'linux-x64', dir: buildDir };
+  };
+  const b10 = mkSnap(10, '<h1>r10</h1>');
+  const b11 = mkSnap(11, '<h1>r11</h1>');
+  const resDir = path.join(deltaTmp, 'resources');
+  archiveResourceSnapshot(b10, resDir, 10);
+  const rp = packageAndGenerateResourceDeltas({
+    builds: [b11],
+    resourceCode: 11,
+    outDir: deltaTmp,
+    resourcesDir: resDir,
+  });
+  check('资源增量：生成 c11-c10.zip', () =>
+    rp.summary.deltas.some((d) => d.file === 'slim-linux-x64/deltas/c11-c10.zip' && d.encoding === 'zip'),
+  );
+  check('资源增量：差分包是真 zip', () => {
+    const f = path.join(resDir, 'slim-linux-x64/deltas/c11-c10.zip');
+    return fs.readFileSync(f).subarray(0, 2).toString() === 'PK';
+  });
+  check('资源增量：selectResourceDelta 按 fromCode 选包', () => {
+    const picked = selectResourceDelta(rp.summary, 10);
+    return picked && picked.file.includes('c11-c10');
+  });
+  check('资源增量：无匹配返回 null', () => selectResourceDelta(rp.summary, 99) === null);
+  check('资源增量：本地 app/ 作 base 重建 == 新资源快照', () => {
+    const picked = selectResourceDelta(rp.summary, 10);
+    const zipPath = path.join(resDir, picked.file);
+    const dObj = deltaMod.unpackDelta(fs.readFileSync(zipPath), picked.encoding);
+    const base = path.join(resDir, 'slim-linux-x64/versions/c10');
+    const staging = path.join(deltaTmp, 'rebuilt');
+    deltaMod.applyDirDelta(base, dObj, staging);
+    const target = path.join(resDir, 'slim-linux-x64/versions/c11');
+    const rel = (d) => fs.readdirSync(d).sort().join(',');
+    return (
+      rel(staging) === rel(target) &&
+      fs.readFileSync(path.join(staging, 'index.html'), 'utf8') ===
+        fs.readFileSync(path.join(target, 'index.html'), 'utf8')
+    );
+  });
+  check('资源增量：base 篡改被重建 sha256 拒绝', () => {
+    const picked = selectResourceDelta(rp.summary, 10);
+    const dObj = deltaMod.unpackDelta(fs.readFileSync(path.join(resDir, picked.file)), picked.encoding);
+    const badBase = path.join(deltaTmp, 'badbase');
+    fs.mkdirSync(badBase, { recursive: true });
+    fs.writeFileSync(path.join(badBase, 'huge.js'), 'wrong base content');
+    try {
+      deltaMod.applyDirDelta(badBase, dObj, path.join(deltaTmp, 'badout'));
+      return false;
+    } catch (_) {
+      return true;
+    }
+  });
+  check('资源增量：attach 写入 resourceDeltas 到 update.json', () => {
+    const out = path.join(deltaTmp, 'attachOut');
+    fs.mkdirSync(out, { recursive: true });
+    const rel = attachResourcesToUpdate(out, {
+      builds: [b11],
+      outDir: out,
+      version: '1.0.0',
+      resourceCode: 11,
+      deltaSummary: rp.summary,
+      resourcesDir: resDir,
+    });
+    return (
+      rel && rel.resource.resourceCode === 11 && rel.resource.resourceDeltas && rel.resource.resourceDeltas.length === 1
+    );
+  });
+
   let pass = 0;
   for (const [name, ok, msg] of cases) {
     console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}${msg ? ' - ' + msg : ''}`);
@@ -354,6 +545,10 @@ module.exports = {
   buildResourceZip,
   verifyResource,
   extractResourceZip,
+  archiveResourceSnapshot,
+  batchGenerateResourceDeltas,
+  packageAndGenerateResourceDeltas,
+  selectResourceDelta,
   attachResourcesToUpdate,
   bundleDigest,
   RESOURCE_FORMAT,

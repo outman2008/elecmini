@@ -659,6 +659,130 @@ test('resourceUpdater 替换失败时回滚，app/ 保持原样', () => {
   }
 });
 
+test('resourceUpdater 优先用资源差分包（本地 app/ 作 base 重建）', async () => {
+  const { ResourceUpdater } = require('./resource-updater');
+  const resource = require('../../pack/resource.js');
+  const delta = require('../../pack/delta.js');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-resdelta-'));
+  const appDir = path.join(tmp, 'app');
+  fs.mkdirSync(appDir, { recursive: true });
+  const big = (v) => `// v${v}\n` + 'z'.repeat(10000);
+  fs.writeFileSync(path.join(appDir, 'index.html'), '<h1>v1</h1>\n');
+  fs.writeFileSync(path.join(appDir, 'huge.js'), big(1));
+
+  // 生成 v2 资源快照 + 清单，并做 c10<-c5 差分（当前 code=5）
+  const v2 = path.join(tmp, 'v2');
+  fs.mkdirSync(v2, { recursive: true });
+  fs.writeFileSync(path.join(v2, 'index.html'), '<h1>v2</h1>\n');
+  fs.writeFileSync(path.join(v2, 'huge.js'), big(2));
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const pub = publicKey.export({ type: 'spki', format: 'pem' });
+  const mf = resource.generateResourceManifest(v2, 10, { version: '2.0.0', sku: 'slim', privateKey });
+  const dObj = delta.generateDirDelta(appDir, v2, '5', '10');
+  const dZip = delta.packDelta(dObj);
+  const dSha = crypto.createHash('sha256').update(dZip).digest('hex');
+
+  const release = {
+    resource: {
+      resourceCode: 10,
+      file: 'res.zip',
+      manifest: 'resource.json',
+      resourceDeltas: [{ fromCode: 5, toCode: 10, file: 'c10-c5.zip', encoding: 'zip', sha256: dSha }],
+    },
+  };
+  process.env.ELECMINI_UPDATE_PUBKEY = pub;
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = appDir;
+  try {
+    const u = new ResourceUpdater();
+    u._explicitCode = 5;
+    u.setFeedURL('https://example.test/update.json');
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url === 'https://example.test/c10-c5.zip') return dZip;
+      if (url === 'https://example.test/resource.json') return JSON.stringify(mf);
+      throw new Error('不该请求全量包: ' + url); // 增量成功则不应下载 res.zip
+    });
+    let selected = 0;
+    u.on('delta-selected', () => selected++);
+    await u.checkForResourceUpdates();
+    const paths = await u.downloadResourceUpdate();
+    assert.ok(paths.length === 1 && selected === 1, '应走增量并发 delta-selected');
+    assert.strictEqual(u._downloadMode, 'resource-delta');
+    assert.strictEqual(fs.readFileSync(path.join(paths[0], 'index.html'), 'utf8'), '<h1>v2</h1>\n');
+    const r = u.applyResource();
+    assert.ok(r.ok && fs.readFileSync(path.join(appDir, 'huge.js'), 'utf8') === big(2), '重建后 app/ 应是 v2');
+  } finally {
+    ctx.appDir = savedAppDir;
+    delete process.env.ELECMINI_UPDATE_PUBKEY;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resourceUpdater 增量 sha256 不符时回退全量资源包', async () => {
+  const { ResourceUpdater } = require('./resource-updater');
+  const resource = require('../../pack/resource.js');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-resfb-'));
+  const appDir = path.join(tmp, 'app');
+  fs.mkdirSync(appDir, { recursive: true });
+  fs.writeFileSync(path.join(appDir, 'index.html'), '<h1>v1</h1>\n');
+  const v2 = path.join(tmp, 'v2');
+  fs.mkdirSync(v2, { recursive: true });
+  fs.writeFileSync(path.join(v2, 'index.html'), '<h1>v2-full</h1>\n');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const pub = publicKey.export({ type: 'spki', format: 'pem' });
+  const mf = resource.generateResourceManifest(v2, 10, { privateKey });
+  const zr = resource.buildResourceZip(v2, mf);
+  const release = {
+    resource: {
+      resourceCode: 10,
+      file: 'res.zip',
+      manifest: 'resource.json',
+      sha256: zr.sha256,
+      resourceDeltas: [{ fromCode: 5, toCode: 10, file: 'c10-c5.zip', encoding: 'zip', sha256: 'deadbeef' }],
+    },
+  };
+  process.env.ELECMINI_UPDATE_PUBKEY = pub;
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = appDir;
+  try {
+    const u = new ResourceUpdater();
+    u._explicitCode = 5;
+    u.setFeedURL('https://example.test/update.json');
+    let fullHits = 0;
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url === 'https://example.test/c10-c5.zip') return Buffer.from('PKcorrupt');
+      if (url === 'https://example.test/res.zip') {
+        fullHits++;
+        return zr.zip;
+      }
+      if (url === 'https://example.test/resource.json') return JSON.stringify(mf);
+      throw new Error('unexpected url ' + url);
+    });
+    let fallback = 0;
+    u.on('delta-fallback', () => fallback++);
+    await u.checkForResourceUpdates();
+    const paths = await u.downloadResourceUpdate();
+    assert.ok(paths.length === 1 && fullHits === 1 && fallback === 1, '增量失败应回退全量');
+    assert.strictEqual(u._downloadMode, 'resource');
+  } finally {
+    ctx.appDir = savedAppDir;
+    delete process.env.ELECMINI_UPDATE_PUBKEY;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('electron.js 导出 resourceUpdater', () => {
   const e = require('../electron.js');
   assert.ok(e.resourceUpdater && typeof e.resourceUpdater.checkForResourceUpdates === 'function');

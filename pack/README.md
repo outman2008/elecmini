@@ -12,8 +12,9 @@
 | `update.js` | 自动更新：manifest 校验、验签、原子替换、失败回滚 |
 | `delta.js` | 增量更新：块级差分包生成/应用、按 versionCode 自动选包、篡改检测；失败自动回退全量 |
 | `zip.js` | 零依赖标准 ZIP 容器读写（单/多 entry + DEFLATE），差分包 `.zip` 封装 + 资源包 |
-| `resource.js` | 资源热更新打包：只含 app/ 的独立清单（resourceCode）+ 资源 zip + Ed25519 签名 |
+| `resource.js` | 资源热更新打包：只含 app/ 的独立清单（resourceCode）+ 资源 zip + Ed25519 签名 + 资源增量差分包 |
 | `version.js` | 版本双轨：`version`(展示串) + `versionCode`(单调整数机器键)，解析/推导/比较 |
+| `change-detect.js` | 打包前对比输入材料哈希与基线，自动判定 full/resource/skip 并推进版本号（`dist/.pack-state/baseline.json`） |
 | `gray.js` | 灰度分桶（按匿名设备 ID 决定是否放量） |
 | `telemetry-report.js` | 遥测聚合：JSONL 样本 → L0 覆盖率分布 + Go/No-Go 判定 |
 | `fetch-webview2.js` | 拉取 WebView2 版本数据 |
@@ -25,21 +26,20 @@
 ## 常用命令
 
 ```bash
-# 打包（默认自动生成差分包）
-node pack/build.js --app examples/minimal --version 1.2.0 --version-code 1200
-#   version 默认取 package.json；versionCode 缺省时从 version 三段数值推导
-#   → dist/versions/<sku>-<target>/c<versionCode>/    每次构建的快照（目录名纯数字）
-#   → dist/deltas/<sku>-<target>/c<to>-c<from>.zip + deltas.json   （真 zip，内部 entry 为 delta.json）
-#   → dist/update.json 内嵌 deltas（含 fromCode/toCode/encoding），autoUpdater 按 code 自动选包
-# 展示串可含特殊字符（# ? 空格 + 等），绝不进入路径/文件名/URL：
-node pack/build.js --app examples/minimal --version '1.2.3-beta #frag' --version-code 1201
-# 首次打包只有 1 个版本时生成空索引，客户端自动走全量
-node pack/build.js --app examples/minimal --no-delta   # 关闭差分包生成
-# 资源热更新包（只含 app/，独立 resourceCode，不重启生效）
-node pack/build.js --app examples/minimal --resource-code 10
-#   → dist/resources/<sku>-<target>/resource-c<code>.zip + resource.json
-#   → dist/update.json 的 resource / resources 字段；客户端用 resourceUpdater 检查下载替换后 reload
-node pack/build.js --app examples/minimal --no-resource  # 关闭资源包生成
+# 打包：打包前自动判定发布类型并推进版本号（无需手动传 code）
+node pack/build.js --app examples/minimal --version 1.2.0
+#   首次/运行时变 → full（versionCode+1，整包差分）；仅 app/ 变 → resource（resourceCode+1，只发资源增量包）；无变化 → skip
+#   版本号持久化在 dist/.pack-state/baseline.json；展示串 version 默认取 package.json
+#   → dist/versions/<group>/c<code>/     整包快照（目录名纯数字）
+#   → dist/deltas/<group>/c<to>-c<from>.zip + deltas.json   整包差分（真 zip）
+#   → dist/resources/<group>/versions/c<code>/ + deltas/c<to>-c<from>.zip   资源快照 + 资源差分
+#   → dist/update.json 内嵌 deltas 与 resource.resourceDeltas，两个更新器各自按 code 选包
+# 显式覆盖自动版本号（按需）：
+node pack/build.js --app examples/minimal --version '1.2.3-beta #frag' --version-code 1201 --resource-code 11
+# 展示串可含特殊字符（# ? 空格 + 等），绝不进入路径/文件名/URL
+node pack/build.js --app examples/minimal --no-delta      # 关闭整包差分
+node pack/build.js --app examples/minimal --no-resource   # 关闭资源包
+# 查看当前基线：node pack/change-detect.js --inspect --out dist
 
 node pack/sign.js --verify <bundle>
 node pack/telemetry-report.js --dir <telemetryDir> --min-samples 385

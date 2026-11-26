@@ -73,6 +73,9 @@ run "更新器自测" node pack/update.js --self-test
 # 5.1) 版本双轨自测（versionCode 解析/推导/比较，特殊字符不污染机器键）
 run "版本双轨自测" node pack/version.js --self-test
 
+# 5.1.1) 打包变更决策自测（full/resource/skip + 版本号自动递增）
+run "打包变更决策自测" node pack/change-detect.js --self-test
+
 # 5.2) 增量更新器自测（块级 delta + zip 封装 + 差分包选择 + 篡改检测 + 打包闭环）
 run "增量更新器自测" node pack/delta.js --self-test
 

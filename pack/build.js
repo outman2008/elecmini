@@ -11,11 +11,14 @@
  *   node pack/build.js --sku slim --target win32-x64 --dry-run
  *   node pack/build.js --version 1.2.0 --out dist   # 指定版本号（默认取 package.json）
  *
- * 打包后默认生成差分包（Ubuntu 式 latest<-old）：
- *   1. 把本次产物归档为 dist/versions/<sku>-<target>/<version>/
- *   2. 对该 SKU 的每个旧版本生成 <new>-<old>.diff + deltas.json
- *   3. 把 deltas 索引写进 dist/update.json，供 autoUpdater 自动选包
- *   首次打包只有 1 个版本时优雅降级为空索引（客户端走全量）。用 --no-delta 关闭。
+ * 打包前自动判定发布类型（pack/change-detect.js 对比本次输入与上次基线）：
+ *   - 首次 / bin|runtime|shim|launcher 变 -> full：整包差分包 + 资源包，versionCode 递增
+ *   - 仅 app/ 变                          -> resource：只发资源增量包，resourceCode 递增、versionCode 不动
+ *   - 无变化                              -> skip：不产出更新包，版本号不动
+ * 版本号持久化在 dist/.pack-state/baseline.json，显式 --version-code/--resource-code 覆盖自动值。
+ * 整包差分（Ubuntu 式 latest<-old）：归档 dist/versions/<group>/c<code>/ -> c<to>-c<from>.zip -> update.json.deltas。
+ * 资源差分：归档 dist/resources/<group>/versions/c<code>/ -> deltas/c<to>-c<from>.zip -> update.json.resource.resourceDeltas。
+ * 用 --no-delta / --no-resource 分别关闭两条通道。
  *
  * 说明：本脚本产出"可组装的目录布局 + manifest + 启动器"，不执行平台签名/安装包编译
  * （视图 3 平台签名需真实凭据，见 P3-C；wine 无法产出真实 dmg/NSIS 安装包）。
@@ -111,6 +114,31 @@ function resolveVersionInfo(explicit, explicitCode) {
 
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+/**
+ * 资源变更（versionCode 不变）时刷新 update.json 的整包 files[]/bundleSha256，
+ * 但保留已有的 deltas/resource/releaseNotes（这些指向仍有效的旧版本产物）。
+ */
+function refreshReleaseFiles(outDir, versionInfo, builds) {
+  const updatePath = path.join(outDir, 'update.json');
+  const first = (builds || []).find((b) => !b.dryRun && b.dir);
+  if (!first) return null;
+  const fresh = require('./update.js').generateRelease(first.dir, versionInfo.version, first.sku, {
+    versionCode: versionInfo.versionCode,
+  });
+  if (fs.existsSync(updatePath)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(updatePath, 'utf8'));
+      for (const k of ['deltas', 'resource', 'resources', 'releaseNotes']) {
+        if (prev[k] !== undefined) fresh[k] = prev[k];
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  fs.writeFileSync(updatePath, JSON.stringify(fresh, null, 2));
+  return fresh;
 }
 
 function dirEntries(dir, base = '') {
@@ -287,10 +315,40 @@ function main() {
   ensureLauncherTemplate();
   const nodeBin = resolveNode(args.nodeBin);
   const outDir = path.resolve(ROOT, args.out);
-  const versionInfo = resolveVersionInfo(args.version, args.versionCode);
+  const skus = args.sku === 'both' ? ['slim', 'full'] : [args.sku];
+  const change = require('./change-detect.js');
+
+  // 用打包源材料构造变更检测输入（app/ -> resource，其余 -> runtime）
+  const inputs = [];
+  for (const sku of skus) {
+    const plan = planLayout(sku, args.target, nodeBin);
+    for (const it of plan.items) {
+      if (!it.src) continue; // placeholder 无 src
+      inputs.push({
+        path: it.src,
+        kind: it.kind,
+        dest: `${sku}-${args.target}/${it.dest}`,
+        bucket: it.dest === 'app' ? 'resource' : 'runtime',
+      });
+    }
+  }
+
+  // dry-run 不做决策落盘，仅展示版本；正式打包按变更范围自动判定并推进版本号
+  let decision = null;
+  if (!args.dryRun) {
+    decision = change.decide({
+      outDir,
+      inputs,
+      version: args.version,
+      explicit: { versionCode: args.versionCode, resourceCode: args.resourceCode },
+    });
+    console.log(`\n[DECIDE] ${change.summarize(decision)}`);
+  }
+  // 展示串仍来自 --version/package.json；versionCode 由决策自动推进（显式优先）
+  const displayVersion = resolveVersionInfo(args.version, args.versionCode).version;
+  const versionInfo = resolveVersionInfo(displayVersion, decision ? decision.versionCode : args.versionCode);
   if (!args.dryRun) fs.mkdirSync(outDir, { recursive: true });
 
-  const skus = args.sku === 'both' ? ['slim', 'full'] : [args.sku];
   const results = [];
   for (const sku of skus) results.push(buildSku(sku, args.target, outDir, nodeBin, args.dryRun, versionInfo));
 
@@ -303,8 +361,18 @@ function main() {
   if (!args.dryRun) fs.writeFileSync(path.join(outDir, 'build-index.json'), JSON.stringify(index, null, 2));
   console.log('\n打包完成（目录布局阶段）：', outDir);
 
-  // 默认生成差分包：归档版本 -> 自动生成 latest<-old 差分包 -> 写回 update.json
-  if (!args.dryRun && !args.noDelta) {
+  const skip = decision && decision.decision === 'skip';
+  const full = !decision || decision.decision === 'full';
+  const decisionResourceCode = decision ? decision.resourceCode : versionInfo.versionCode;
+
+  // 无变化：不产出任何更新包，保留现有 update.json
+  if (skip) {
+    console.log('[BUILD] 无变更（skip）：不产出更新包，版本号保持不变');
+    return;
+  }
+
+  // 整包差分包：仅 full 决策生成（versionCode 已推进）。resource 决策 versionCode 不变，无需整包升级。
+  if (full && !args.noDelta) {
     const delta = require('./delta.js');
     const deltaOpts = { builds: results, outDir, version: versionInfo.version, versionCode: versionInfo.versionCode };
     if (args.versionsDir) deltaOpts.versionsDir = path.resolve(ROOT, args.versionsDir);
@@ -312,28 +380,46 @@ function main() {
     const result = delta.packageAndGenerateDeltas(deltaOpts);
     delta.attachDeltasToUpdate(outDir, versionInfo, result.summary, results);
     console.log(
-      `[BUILD] v${versionInfo.version} (code=${versionInfo.versionCode}) 差分包已生成并写入 update.json（${result.summary.deltas.length} 个，--no-delta 可关闭）`,
+      `[BUILD] v${versionInfo.version} (code=${versionInfo.versionCode}) 整包差分包已生成（${result.summary.deltas.length} 个，--no-delta 可关闭）`,
     );
-  } else if (args.noDelta) {
-    console.log('[BUILD] --no-delta：跳过差分包生成');
+  } else if (full && args.noDelta) {
+    // --no-delta：不生成整包差分，但仍需产出整包 update.json 供资源挂载
+    require('./delta.js').attachDeltasToUpdate(outDir, versionInfo, null, results);
+    console.log('[BUILD] --no-delta：跳过整包差分包生成');
+  } else if (!full && !args.noDelta) {
+    // resource 决策：刷新整包 files[]（app 已变）但保留旧 deltas/resource
+    refreshReleaseFiles(outDir, versionInfo, results);
+    console.log('[BUILD] 仅资源变更：不升级整包版本，跳过整包差分包');
   }
 
-  // 资源热更新包：独立于整包，只含 app/ 目录；放在 delta attach 之后（后者会重建 update.json）。
-  // 与 --no-delta 互不依赖：--no-delta 时 attachResourcesToUpdate 会自生成 update.json。
-  if (!args.dryRun && !args.noResource) {
+  // 资源通道：full 与 resource 决策都产出（携带最新 app/ 作为全量回退 + 资源差分包）。
+  // 放在整包 attach 之后（后者会重建 update.json）。
+  if (!args.noResource) {
     const resource = require('./resource.js');
-    const resourceCode = args.resourceCode !== null ? args.resourceCode : versionInfo.versionCode;
     const resOpts = {
       builds: results,
       outDir,
       version: versionInfo.version,
-      resourceCode,
+      resourceCode: decisionResourceCode,
+      versionCode: versionInfo.versionCode,
       privateKey: process.env.ELECMINI_UPDATE_PRIVKEY || null,
     };
     if (args.resourcesDir) resOpts.resourcesDir = path.resolve(ROOT, args.resourcesDir);
+    // 1) 归档 app/ 快照 + 生成 latest<-old 资源差分包
+    const resDelta = resource.packageAndGenerateResourceDeltas({
+      builds: results,
+      outDir,
+      resourceCode: decisionResourceCode,
+      resourcesDir: resOpts.resourcesDir || path.join(outDir, 'resources'),
+      blockSize: undefined,
+    });
+    resOpts.deltaSummary = resDelta.summary;
+    // 2) 产出资源全量包 + 把 resourceDeltas 写进 update.json
     resource.attachResourcesToUpdate(outDir, resOpts);
-    console.log(`[BUILD] 资源包已生成并写入 update.json（resourceCode=${resourceCode}，--no-resource 可关闭）`);
-  } else if (args.noResource) {
+    console.log(
+      `[BUILD] 资源包已生成（resourceCode=${decisionResourceCode}，差分 ${resDelta.summary.deltas.length} 个，--no-resource 可关闭）`,
+    );
+  } else {
     console.log('[BUILD] --no-resource：跳过资源包生成');
   }
 }

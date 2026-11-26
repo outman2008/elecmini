@@ -42,6 +42,11 @@ function getVersion() {
   if (!versionModule) versionModule = require('../../pack/version.js');
   return versionModule;
 }
+let deltaModule = null;
+function getDelta() {
+  if (!deltaModule) deltaModule = require('../../pack/delta.js');
+  return deltaModule;
+}
 
 class ResourceUpdater extends EventEmitter {
   constructor() {
@@ -160,7 +165,37 @@ class ResourceUpdater extends EventEmitter {
     }
   }
 
-  /** 下载资源 zip -> sha256 + 解包 + 清单验签 + 提取到 staging */
+  /** 校验 staging 与资源清单一致（files[] sha256 + bundle + Ed25519），返回 manifest 对象 */
+  async _verifyStaging(staging, entry, cached) {
+    if (entry.manifest) {
+      const mfUrl = new URL(entry.manifest, cached.feedURL).toString();
+      const mfRaw = await this._fetch(mfUrl);
+      const mf = typeof mfRaw === 'string' ? JSON.parse(mfRaw) : mfRaw;
+      if (mf.resourceCode !== entry.resourceCode) throw new Error('资源清单 code 与条目不符');
+      const pubkey = process.env.ELECMINI_UPDATE_PUBKEY || entry.signature?.publicKey;
+      const verify = getResource().verifyResource(mf, staging, pubkey);
+      if (!verify.ok) throw new Error('资源验签失败: ' + verify.problems.join('; '));
+      return mf;
+    }
+    if (entry.bundleSha256) {
+      // 无独立 manifest 时，用条目自带的 bundleSha256 做基本校验
+      const files = walkRelative(staging).map((rel) => ({
+        path: rel,
+        sha256: crypto
+          .createHash('sha256')
+          .update(fs.readFileSync(path.join(staging, rel)))
+          .digest('hex'),
+      }));
+      if (getResource().bundleDigest(files) !== entry.bundleSha256) throw new Error('资源 bundle 摘要不符');
+      return { resourceCode: entry.resourceCode, files };
+    }
+    return { resourceCode: entry.resourceCode };
+  }
+
+  /**
+   * 下载资源更新：优先按当前 resourceCode 选差分包（本地 app/ 作 base 重建），
+   * 任何一步失败（sha256/CRC/base 不符/验签失败/网络错）回退全量资源 zip。
+   */
   async downloadResourceUpdate() {
     if (this._busy) return [];
     this._busy = true;
@@ -168,41 +203,54 @@ class ResourceUpdater extends EventEmitter {
       const cached = this._cachedResource;
       if (!cached) throw new Error('no resource update; call checkForResourceUpdates() first');
       const entry = cached.entry;
+      const current = this.currentResourceCode;
+
+      // 1) 增量：按 fromCode 匹配差分包
+      const picked = getResource().selectResourceDelta(entry.resourceDeltas, current);
+      if (picked) {
+        try {
+          const dUrl = picked.url || new URL(picked.file, cached.feedURL).toString();
+          const dZip = await this._fetchBinary(dUrl);
+          if (picked.sha256 && crypto.createHash('sha256').update(dZip).digest('hex') !== picked.sha256) {
+            throw new Error('资源差分包 sha256 不符');
+          }
+          const deltaObj = getDelta().unpackDelta(dZip, picked.encoding || 'zip');
+          const ctx = require('../context').get();
+          const appDir = ctx.appDir;
+          if (!appDir || !fs.existsSync(appDir)) throw new Error('无本地 app/ 作为差分基准');
+          const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-res-delta-'));
+          getDelta().applyDirDelta(appDir, deltaObj, staging);
+          const mf = await this._verifyStaging(staging, entry, cached);
+          this._stagingDir = staging;
+          this._resourceManifest = mf;
+          this._downloadMode = 'resource-delta';
+          this.emit('delta-selected', { fromCode: picked.fromCode, toCode: picked.toCode, file: picked.file });
+          this.emit('download-progress', {
+            percent: 100,
+            transferred: 1,
+            total: 1,
+            bytes: dZip.length,
+            mode: 'resource-delta',
+          });
+          this.emit('resource-downloaded', { resourceCode: entry.resourceCode, mode: 'resource-delta' });
+          return [staging];
+        } catch (e) {
+          // 增量失败：清理可能残留的 staging，回退全量
+          this.emit('delta-fallback', { reason: e.message, fromCode: picked.fromCode });
+        }
+      }
+
+      // 2) 全量：解包资源 zip + 验签
       const url = entry.url || new URL(entry.file, cached.feedURL).toString();
       const zipBuf = await this._fetchBinary(url);
       if (entry.sha256 && crypto.createHash('sha256').update(zipBuf).digest('hex') !== entry.sha256) {
         throw new Error('资源包 sha256 不符');
       }
-      // 解包（每 entry CRC32 校验）并提取到 staging
       const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-res-update-'));
       getResource().extractResourceZip(zipBuf, staging);
-      // 用 resource.json 清单校验 staging（files[] sha256 + bundle + Ed25519）
-      if (entry.manifest) {
-        const mfUrl = new URL(entry.manifest, cached.feedURL).toString();
-        const mfRaw = await this._fetch(mfUrl);
-        const mf = typeof mfRaw === 'string' ? JSON.parse(mfRaw) : mfRaw;
-        if (mf.resourceCode !== entry.resourceCode) throw new Error('资源清单 code 与条目不符');
-        const pubkey = process.env.ELECMINI_UPDATE_PUBKEY || entry.signature?.publicKey;
-        const verify = getResource().verifyResource(mf, staging, pubkey);
-        if (!verify.ok) throw new Error('资源验签失败: ' + verify.problems.join('; '));
-        this._stagingDir = staging;
-        this._resourceManifest = mf;
-      } else if (entry.bundleSha256) {
-        // 无独立 manifest 时，用条目自带的 bundleSha256 做基本校验
-        const files = walkRelative(staging).map((rel) => ({
-          path: rel,
-          sha256: crypto
-            .createHash('sha256')
-            .update(fs.readFileSync(path.join(staging, rel)))
-            .digest('hex'),
-        }));
-        if (getResource().bundleDigest(files) !== entry.bundleSha256) throw new Error('资源 bundle 摘要不符');
-        this._stagingDir = staging;
-        this._resourceManifest = { resourceCode: entry.resourceCode, files };
-      } else {
-        this._stagingDir = staging;
-        this._resourceManifest = { resourceCode: entry.resourceCode };
-      }
+      this._resourceManifest = await this._verifyStaging(staging, entry, cached);
+      this._stagingDir = staging;
+      this._downloadMode = 'resource';
       this.emit('download-progress', {
         percent: 100,
         transferred: 1,
@@ -253,8 +301,9 @@ class ResourceUpdater extends EventEmitter {
 
       // 4) reload 所有窗口（不重启进程）
       const reloaded = this._reloadWindows();
-      this.emit('resource-applied', { resourceCode: mf.resourceCode, reloaded });
-      return { ok: true, reloaded };
+      const mode = this._downloadMode || 'resource';
+      this.emit('resource-applied', { resourceCode: mf.resourceCode, reloaded, downloadMode: mode });
+      return { ok: true, reloaded, downloadMode: mode };
     } catch (e) {
       this.emit('error', e);
       return { ok: false, error: e.message };
