@@ -67,7 +67,8 @@
     "migrate/README.md",
     "docs/unsupported-apis.md",
     "docs/incremental-update.md",
-    "docs/resource-hot-update.md"
+    "docs/resource-hot-update.md",
+    "docs/updater-ui.md"
   ],
   "scripts": {
     "lint": "eslint runtime shim/src pack contract",

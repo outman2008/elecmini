@@ -33,6 +33,7 @@ ElecMini **不是** Electron 的分支，而是一套**兼容层**：业务代�
 - **迁移评估工具链**：静态 AST 扫描 → Go/No-Go 预判 → 自动生成运行时探针 → 差分契约测试，把"能不能迁"变成可复现流程。
 - **启动门禁与降级**：按系统 WebView 版本分级（L0/L1/L2/L3），缺失能力时明确提示，绝不白屏。
 - **打包与分发**：Slim / Full 双 SKU、代码签名、自动更新（含验签与回滚）、灰度分桶。
+- **零代码自动升级 UI**：状态栏角标 → 静默下载进度 → 资源热更新 / 提示重启，深浅主题自动切换、样式可定制（[文档](./docs/updater-ui.md)）。
 - **安全加固**：host 侧导航 origin 锚定 + IPC 来源校验，可选 `ELECMINI_STRICT_NAV=1` 严格阻断异源导航。
 
 ## 和 Electron / Tauri 相比该怎么选？
@@ -146,6 +147,7 @@ ElecMini 对其中**核心 20 个模块**的成员做了逐项语义分级，共
 | 原生宿主（Rust） | [`host/README.md`](./host/README.md) |
 | 差分契约测试 | [`contract/README.md`](./contract/README.md) |
 | 打包 / 签名 / 更新 | [`pack/README.md`](./pack/README.md) |
+| 自动升级 UI | [`docs/updater-ui.md`](./docs/updater-ui.md) |
 | 兼容性基线 | [`compat/README.md`](./compat/README.md) |
 | API 兼容层与扫描器 | [`shim/README.md`](./shim/README.md) |
 | 测试夹具 | [`tests/README.md`](./tests/README.md) |

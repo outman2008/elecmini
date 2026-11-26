@@ -101,6 +101,21 @@ async function main() {
   const store = new Store(rpc);
   ctx.init({ rpc, store, appDir, appPath: appDir, baseUrl, closeServer });
 
+  // 自动升级 UI：零代码默认启用。配置来源优先级 enable() 参数 > 目标 package.json
+  // 的 elecmini.updaterUI > 环境变量 ELECMINI_UPDATER_UI=0（关闭）。
+  // 注入脚本开关需与此一致：关闭时不注入 UI 客户端脚本。
+  let uiOpts = {};
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));
+    if (pkg.elecmini && pkg.elecmini.updaterUI) uiOpts = pkg.elecmini.updaterUI;
+  } catch (_) {}
+  const uiDisabled = process.env.ELECMINI_UPDATER_UI === '0' || uiOpts.enabled === false;
+  try {
+    require('./modules/updater-ui').updaterUI.enable({ ...uiOpts, enabled: undefined });
+  } catch (e) {
+    process.stderr.write(`[ELECMINI:updater-ui] 启用失败（不影响主流程）：${e.message}\n`);
+  }
+
   // P6-J：<webview> 桥接（ipcMain handler + host guest 事件转发），在加载应用前注册
   try {
     require('./webview-bridge').setupWebviewBridge(rpc);
@@ -120,7 +135,7 @@ async function main() {
   let preloadSource = null;
   const preloadCandidate = path.join(appDir, 'preload.js');
   if (fs.existsSync(preloadCandidate)) preloadSource = fs.readFileSync(preloadCandidate, 'utf8');
-  const initScript = buildInitScript(preloadSource);
+  const initScript = buildInitScript(preloadSource, { updaterUI: !uiDisabled });
   // host ready 后下发初始化脚本（在所有 window:create 之前），并拉取系统信息供同步 shim 使用
   rpc.once('host:ready', async () => {
     rpc.notify('host:initScript', { script: initScript });

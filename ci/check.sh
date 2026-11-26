@@ -56,6 +56,7 @@ run "IPC 类型层单测" node shim/src/ipc-types.test.js
 # 1.5) runtime 核心模块单测（clipboard/ipc/protocol/session/browser-window/app）
 run "runtime 模块单测" node runtime/modules/modules.test.js
 run "preload 运行时单测" node runtime/preload-runtime.test.js
+run "自动升级 UI 单测" node runtime/updater-ui.test.js
 run "Codec 跨端一致性" node runtime/codec-consistency.test.js
 
 # 2) 门禁状态机（L0/L1/L2/L3）

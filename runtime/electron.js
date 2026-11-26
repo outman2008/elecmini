@@ -25,6 +25,7 @@ const { session, bindSessionEvents } = require('./modules/session');
 const { Notification, bindNotificationEvents } = require('./modules/notification');
 const { autoUpdater } = require('./modules/auto-updater');
 const { resourceUpdater } = require('./modules/resource-updater');
+const { updaterUI } = require('./modules/updater-ui');
 
 const { store, rpc } = ctx.get();
 
@@ -79,6 +80,7 @@ const shimExports = {
   Notification,
   autoUpdater,
   resourceUpdater, // ElecMini 扩展：仅资源热更新（不重启，只换 app/ 并 reload）
+  updaterUI, // ElecMini 扩展：零代码升级 UI（状态栏角标/下载进度/热更新/重启提示）
 };
 
 // P5：官方契约补齐层——对文档声明但未实现的成员补状态镜像/降级桩并登记分级。

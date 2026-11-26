@@ -367,11 +367,16 @@ const WEBVIEW_ELEMENT_JS = String.raw`
 `;
 
 /**
- * 生成完整的初始化脚本 = 运行时 + <webview> 元素 + 目标 preload.js 源码
+ * 生成完整的初始化脚本 = 运行时 + <webview> 元素 + 自动升级 UI + 目标 preload.js 源码
+ * 升级 UI 依赖 RUNTIME_JS 提供的 ipcRenderer，故拼在其后。
  * @param {string|null} preloadSource 目标应用 preload.js 的内容
+ * @param {object} opts { updaterUI: boolean } 是否注入升级 UI（默认注入）
  */
-function buildInitScript(preloadSource) {
+function buildInitScript(preloadSource, opts = {}) {
   let base = RUNTIME_JS + '\n' + WEBVIEW_ELEMENT_JS;
+  if (opts.updaterUI !== false) {
+    base += '\n' + require('./updater-ui-client').UPDATER_UI_CLIENT_JS;
+  }
   if (!preloadSource) return base;
   return base + '\n/* ---- target preload.js ---- */\n' + preloadSource + '\n';
 }
