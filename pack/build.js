@@ -38,9 +38,12 @@ function parseArgs(argv) {
     nodeBin: null,
     version: null,
     versionCode: null,
+    resourceCode: null,
     noDelta: false,
+    noResource: false,
     versionsDir: null,
     deltasDir: null,
+    resourcesDir: null,
   };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -64,6 +67,15 @@ function parseArgs(argv) {
         break;
       case '--version-code':
         a.versionCode = argv[++i];
+        break;
+      case '--resource-code':
+        a.resourceCode = argv[++i];
+        break;
+      case '--no-resource':
+        a.noResource = true;
+        break;
+      case '--resources-dir':
+        a.resourcesDir = argv[++i];
         break;
       case '--versions-dir':
         a.versionsDir = argv[++i];
@@ -304,6 +316,25 @@ function main() {
     );
   } else if (args.noDelta) {
     console.log('[BUILD] --no-delta：跳过差分包生成');
+  }
+
+  // 资源热更新包：独立于整包，只含 app/ 目录；放在 delta attach 之后（后者会重建 update.json）。
+  // 与 --no-delta 互不依赖：--no-delta 时 attachResourcesToUpdate 会自生成 update.json。
+  if (!args.dryRun && !args.noResource) {
+    const resource = require('./resource.js');
+    const resourceCode = args.resourceCode !== null ? args.resourceCode : versionInfo.versionCode;
+    const resOpts = {
+      builds: results,
+      outDir,
+      version: versionInfo.version,
+      resourceCode,
+      privateKey: process.env.ELECMINI_UPDATE_PRIVKEY || null,
+    };
+    if (args.resourcesDir) resOpts.resourcesDir = path.resolve(ROOT, args.resourcesDir);
+    resource.attachResourcesToUpdate(outDir, resOpts);
+    console.log(`[BUILD] 资源包已生成并写入 update.json（resourceCode=${resourceCode}，--no-resource 可关闭）`);
+  } else if (args.noResource) {
+    console.log('[BUILD] --no-resource：跳过资源包生成');
   }
 }
 

@@ -24,6 +24,7 @@ const { Tray, bindTrayEvents } = require('./modules/tray');
 const { session, bindSessionEvents } = require('./modules/session');
 const { Notification, bindNotificationEvents } = require('./modules/notification');
 const { autoUpdater } = require('./modules/auto-updater');
+const { resourceUpdater } = require('./modules/resource-updater');
 
 const { store, rpc } = ctx.get();
 
@@ -77,6 +78,7 @@ const shimExports = {
   systemPreferences,
   Notification,
   autoUpdater,
+  resourceUpdater, // ElecMini 扩展：仅资源热更新（不重启，只换 app/ 并 reload）
 };
 
 // P5：官方契约补齐层——对文档声明但未实现的成员补状态镜像/降级桩并登记分级。

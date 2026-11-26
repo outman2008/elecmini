@@ -1,11 +1,11 @@
 /**
- * 零依赖最小 ZIP 容器读写（单 entry，DEFLATE）。
- * 目的：把增量差分包从冷门的 .diff 换成通用 .zip，避免静态服务器/CDN/浏览器
- * 因不识别 .diff 扩展名而拒绝分发。内容用 Node 内置 zlib 真正压缩，后缀与
- * 内容一致（不是改名的 JSON）。
+ * 零依赖最小 ZIP 容器读写（DEFLATE，支持单 entry 与多 entry）。
+ * 目的：把冷门扩展名（.diff）的分发包换成通用 .zip，避免静态服务器/CDN/浏览器
+ * 不识别；同时把多文件的资源包（app/ 目录）打成一个可签名、可校验的 zip。
+ * 内容用 Node 内置 zlib 真正压缩，后缀与内容一致。
  *
- * 只实现 single-entry 的写入与读取，够用且可被系统 unzip / 浏览器解压识别。
  * 不依赖 jszip 等第三方包，保持 ElecMini 轻量与零运行时依赖。
+ * 可被系统 unzip / 浏览器解压工具识别。
  */
 const zlib = require('zlib');
 
@@ -34,67 +34,83 @@ function crc32(buf) {
 }
 
 /**
- * 把单个文件打成一个标准 zip Buffer。
- * @param {string} name zip 内条目名（如 'delta.json'）
- * @param {Buffer|string} content 原始内容
+ * 把多个文件打成一个标准 zip Buffer。
+ * @param {Array<{name:string, content:Buffer|string}>} entries
  * @returns {Buffer} zip 文件字节
  */
-function zipBuffer(name, content) {
-  const data = Buffer.isBuffer(content) ? content : Buffer.from(content);
-  const nameBuf = Buffer.from(String(name), 'utf8');
-  const compressed = zlib.deflateRawSync(data, { level: 9 });
-  const crc = crc32(data);
+function zipEntries(entries) {
+  if (!entries || !entries.length) throw new Error('zip 至少需要一个 entry');
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
 
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(SIG_LOCAL, 0);
-  local.writeUInt16LE(20, 4); // version needed
-  local.writeUInt16LE(0, 6); // flags：无 data descriptor，便于顺序解析
-  local.writeUInt16LE(METHOD_DEFLATE, 8);
-  local.writeUInt16LE(DOS_TIME, 10);
-  local.writeUInt16LE(DOS_DATE, 12);
-  local.writeUInt32LE(crc, 14);
-  local.writeUInt32LE(compressed.length, 18);
-  local.writeUInt32LE(data.length, 22);
-  local.writeUInt16LE(nameBuf.length, 26);
-  local.writeUInt16LE(0, 28); // extra length
+  for (const e of entries) {
+    const data = Buffer.isBuffer(e.content) ? e.content : Buffer.from(e.content);
+    const nameBuf = Buffer.from(String(e.name), 'utf8');
+    const compressed = zlib.deflateRawSync(data, { level: 9 });
+    const crc = crc32(data);
 
-  const central = Buffer.alloc(46);
-  central.writeUInt32LE(SIG_CENTRAL, 0);
-  central.writeUInt16LE(20, 4); // version made by
-  central.writeUInt16LE(20, 6); // version needed
-  central.writeUInt16LE(0, 8); // flags
-  central.writeUInt16LE(METHOD_DEFLATE, 10);
-  central.writeUInt16LE(DOS_TIME, 12);
-  central.writeUInt16LE(DOS_DATE, 14);
-  central.writeUInt32LE(crc, 16);
-  central.writeUInt32LE(compressed.length, 20);
-  central.writeUInt32LE(data.length, 24);
-  central.writeUInt16LE(nameBuf.length, 28);
-  central.writeUInt16LE(0, 30); // extra
-  central.writeUInt16LE(0, 32); // comment
-  central.writeUInt16LE(0, 34); // disk number start
-  central.writeUInt16LE(0, 36); // internal attrs
-  central.writeUInt32LE(0, 38); // external attrs
-  central.writeUInt32LE(0, 42); // local header offset
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(SIG_LOCAL, 0);
+    local.writeUInt16LE(20, 4); // version needed
+    local.writeUInt16LE(0, 6); // flags：无 data descriptor，便于顺序解析
+    local.writeUInt16LE(METHOD_DEFLATE, 8);
+    local.writeUInt16LE(DOS_TIME, 10);
+    local.writeUInt16LE(DOS_DATE, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28); // extra length
 
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(SIG_CENTRAL, 0);
+    central.writeUInt16LE(20, 4); // version made by
+    central.writeUInt16LE(20, 6); // version needed
+    central.writeUInt16LE(0, 8); // flags
+    central.writeUInt16LE(METHOD_DEFLATE, 10);
+    central.writeUInt16LE(DOS_TIME, 12);
+    central.writeUInt16LE(DOS_DATE, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(compressed.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30); // extra
+    central.writeUInt16LE(0, 32); // comment
+    central.writeUInt16LE(0, 34); // disk number start
+    central.writeUInt16LE(0, 36); // internal attrs
+    central.writeUInt32LE(0, 38); // external attrs
+    central.writeUInt32LE(offset, 42); // local header offset
+
+    locals.push(local, nameBuf, compressed);
+    centrals.push(central, nameBuf);
+    offset += local.length + nameBuf.length + compressed.length;
+  }
+
+  const centralSize = centrals.reduce((s, b) => s + b.length, 0);
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(SIG_EOCD, 0);
   eocd.writeUInt16LE(0, 4);
   eocd.writeUInt16LE(0, 6);
-  eocd.writeUInt16LE(1, 8); // entries on this disk
-  eocd.writeUInt16LE(1, 10); // total entries
-  eocd.writeUInt32LE(central.length + nameBuf.length, 12); // central dir size
-  eocd.writeUInt32LE(local.length + nameBuf.length + compressed.length, 16); // central dir offset
+  eocd.writeUInt16LE(entries.length, 8); // entries on this disk
+  eocd.writeUInt16LE(entries.length, 10); // total entries
+  eocd.writeUInt32LE(centralSize, 12); // central dir size
+  eocd.writeUInt32LE(offset, 16); // central dir offset
   eocd.writeUInt16LE(0, 20); // comment length
 
-  return Buffer.concat([local, nameBuf, compressed, central, nameBuf, eocd]);
+  return Buffer.concat([...locals, ...centrals, eocd]);
+}
+
+/** 把单个文件打成一个标准 zip Buffer（delta 差分包用） */
+function zipBuffer(name, content) {
+  return zipEntries([{ name, content }]);
 }
 
 /**
- * 读取单 entry zip，返回 { name, content: Buffer }。
- * 校验 CRC32 与解压长度，损坏/篡改会抛错。
+ * 读取多 entry zip，返回 [{ name, content: Buffer }]。
+ * 每个 entry 校验 CRC32 与解压长度，损坏/篡改会抛错。
  */
-function unzipBuffer(zip) {
+function unzipEntries(zip) {
   const buf = Buffer.isBuffer(zip) ? zip : Buffer.from(zip);
   if (buf.length < 22) throw new Error('zip 太短');
   // 从尾部找 EOCD（comment 最多 65535 字节）
@@ -107,40 +123,54 @@ function unzipBuffer(zip) {
     }
   }
   if (eocd < 0) throw new Error('未找到 zip EOCD');
-  const entries = buf.readUInt16LE(eocd + 10);
-  if (entries !== 1) throw new Error(`只支持单 entry zip，实际 ${entries} 个`);
-
+  const count = buf.readUInt16LE(eocd + 10);
+  if (count < 1) throw new Error('zip 无 entry');
   const cdOffset = buf.readUInt32LE(eocd + 16);
   if (cdOffset + 46 > buf.length || buf.readUInt32LE(cdOffset) !== SIG_CENTRAL) {
     throw new Error('zip central directory 损坏');
   }
-  const method = buf.readUInt16LE(cdOffset + 10);
-  const crc = buf.readUInt32LE(cdOffset + 16);
-  const compSize = buf.readUInt32LE(cdOffset + 20);
-  const uncompSize = buf.readUInt32LE(cdOffset + 24);
-  const nameLen = buf.readUInt16LE(cdOffset + 28);
-  const extraLen = buf.readUInt16LE(cdOffset + 30);
-  const commentLen = buf.readUInt16LE(cdOffset + 32);
-  const localOffset = buf.readUInt32LE(cdOffset + 42);
-  if (cdOffset + 46 + nameLen + extraLen + commentLen > buf.length) throw new Error('zip central directory 越界');
-  const name = buf.toString('utf8', cdOffset + 46, cdOffset + 46 + nameLen);
 
-  if (localOffset + 30 > buf.length || buf.readUInt32LE(localOffset) !== SIG_LOCAL) {
-    throw new Error('zip local header 损坏');
+  const out = [];
+  let p = cdOffset;
+  for (let n = 0; n < count; n++) {
+    if (p + 46 > buf.length || buf.readUInt32LE(p) !== SIG_CENTRAL) throw new Error('zip central directory 损坏');
+    const method = buf.readUInt16LE(p + 10);
+    const crc = buf.readUInt32LE(p + 16);
+    const compSize = buf.readUInt32LE(p + 20);
+    const uncompSize = buf.readUInt32LE(p + 24);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const commentLen = buf.readUInt16LE(p + 32);
+    const localOffset = buf.readUInt32LE(p + 42);
+    if (p + 46 + nameLen + extraLen + commentLen > buf.length) throw new Error('zip central directory 越界');
+    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+
+    if (localOffset + 30 > buf.length || buf.readUInt32LE(localOffset) !== SIG_LOCAL) {
+      throw new Error(`zip local header 损坏: ${name}`);
+    }
+    const lNameLen = buf.readUInt16LE(localOffset + 26);
+    const lExtraLen = buf.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+    if (dataStart + compSize > buf.length) throw new Error(`zip 数据区越界: ${name}`);
+    const compressed = buf.subarray(dataStart, dataStart + compSize);
+
+    let content;
+    if (method === 0) content = Buffer.from(compressed);
+    else if (method === METHOD_DEFLATE) content = zlib.inflateRawSync(compressed);
+    else throw new Error(`不支持的 zip 压缩方法: ${method}`);
+    if (content.length !== uncompSize) throw new Error(`zip 解压长度不符: ${name}`);
+    if (crc32(content) !== crc) throw new Error(`zip CRC32 校验失败: ${name}`);
+    out.push({ name, content });
+    p += 46 + nameLen + extraLen + commentLen;
   }
-  const lNameLen = buf.readUInt16LE(localOffset + 26);
-  const lExtraLen = buf.readUInt16LE(localOffset + 28);
-  const dataStart = localOffset + 30 + lNameLen + lExtraLen;
-  if (dataStart + compSize > buf.length) throw new Error('zip 数据区越界');
-  const compressed = buf.subarray(dataStart, dataStart + compSize);
+  return out;
+}
 
-  let content;
-  if (method === 0) content = Buffer.from(compressed);
-  else if (method === METHOD_DEFLATE) content = zlib.inflateRawSync(compressed);
-  else throw new Error(`不支持的 zip 压缩方法: ${method}`);
-  if (content.length !== uncompSize) throw new Error('zip 解压长度不符');
-  if (crc32(content) !== crc) throw new Error('zip CRC32 校验失败');
-  return { name, content };
+/** 读取单 entry zip，返回 { name, content: Buffer }（delta 差分包用） */
+function unzipBuffer(zip) {
+  const entries = unzipEntries(zip);
+  if (entries.length !== 1) throw new Error(`只支持单 entry zip，实际 ${entries.length} 个`);
+  return entries[0];
 }
 
 function selfTest() {
@@ -177,7 +207,6 @@ function selfTest() {
   });
   check('篡改解压数据被 CRC32 拒绝', () => {
     const z = zipBuffer('delta.json', '{"ok":true}');
-    // 找到 local header 的数据区并翻转一个字节
     const nameLen = z.readUInt16LE(26);
     const dataStart = 30 + nameLen;
     z[dataStart] ^= 0xff;
@@ -205,6 +234,31 @@ function selfTest() {
       return true;
     }
   });
+  check('多 entry zip 往返一致', () => {
+    const es = [
+      { name: 'index.html', content: '<h1>hi</h1>' },
+      { name: 'js/main.js', content: 'console.log(1);' },
+      { name: 'data/logo.png', content: Buffer.from([137, 80, 78, 71, 0, 1, 2, 3]) },
+    ];
+    const out = unzipEntries(zipEntries(es));
+    return (
+      out.length === 3 && out.every((e, i) => e.name === es[i].name && e.content.equals(Buffer.from(es[i].content)))
+    );
+  });
+  check('多 entry 任一被篡改被 CRC32 拒绝', () => {
+    const z = zipEntries([
+      { name: 'a', content: 'aaa' },
+      { name: 'b', content: 'bbb' },
+    ]);
+    // 第一个 local header 的数据区
+    z[30 + 1] ^= 0xff;
+    try {
+      unzipEntries(z);
+      return false;
+    } catch (_) {
+      return true;
+    }
+  });
 
   for (const [name, ok, msg] of cases) console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}${msg ? ' - ' + msg : ''}`);
   console.log(`\nZIP 容器：${pass}/${cases.length} passed`);
@@ -212,4 +266,4 @@ function selfTest() {
 }
 
 if (require.main === module && process.argv.includes('--self-test')) selfTest();
-module.exports = { zipBuffer, unzipBuffer, crc32 };
+module.exports = { zipBuffer, unzipBuffer, zipEntries, unzipEntries, crc32 };

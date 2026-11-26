@@ -90,6 +90,20 @@ class WebContentsShim extends EventEmitter {
   getURL() {
     return this._store.getWindow(this.id)?.url || '';
   }
+  /**
+   * Electron: webContents.reload() —— 重新加载当前 URL。
+   * ElecMini 用本地 HTTP server 承载 app/（实时读盘），资源热更新替换 app/ 后
+   * 调此方法即可让新资源生效，无需重启进程。host 侧 window:loadUrl 已实现。
+   */
+  reload() {
+    const url = this.getURL();
+    if (!url) return Promise.resolve(false);
+    return this._rpc.call('window:loadUrl', { winId: this.id, url }).then((r) => r !== false);
+  }
+  /** Electron: webContents.reloadIgnoringCache() —— 当前 server 无缓存头，语义同 reload */
+  reloadIgnoringCache() {
+    return this.reload();
+  }
   getTitle() {
     return this._store.getWindow(this.id)?.title || '';
   }

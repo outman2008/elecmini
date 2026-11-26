@@ -11,7 +11,8 @@
 | `sign.js` | Ed25519 代码签名与验签（含自检） |
 | `update.js` | 自动更新：manifest 校验、验签、原子替换、失败回滚 |
 | `delta.js` | 增量更新：块级差分包生成/应用、按 versionCode 自动选包、篡改检测；失败自动回退全量 |
-| `zip.js` | 零依赖标准 ZIP 容器读写（单 entry + DEFLATE），差分包用 `.zip` 封装绕开冷门 `.diff` 扩展名 |
+| `zip.js` | 零依赖标准 ZIP 容器读写（单/多 entry + DEFLATE），差分包 `.zip` 封装 + 资源包 |
+| `resource.js` | 资源热更新打包：只含 app/ 的独立清单（resourceCode）+ 资源 zip + Ed25519 签名 |
 | `version.js` | 版本双轨：`version`(展示串) + `versionCode`(单调整数机器键)，解析/推导/比较 |
 | `gray.js` | 灰度分桶（按匿名设备 ID 决定是否放量） |
 | `telemetry-report.js` | 遥测聚合：JSONL 样本 → L0 覆盖率分布 + Go/No-Go 判定 |
@@ -34,6 +35,11 @@ node pack/build.js --app examples/minimal --version 1.2.0 --version-code 1200
 node pack/build.js --app examples/minimal --version '1.2.3-beta #frag' --version-code 1201
 # 首次打包只有 1 个版本时生成空索引，客户端自动走全量
 node pack/build.js --app examples/minimal --no-delta   # 关闭差分包生成
+# 资源热更新包（只含 app/，独立 resourceCode，不重启生效）
+node pack/build.js --app examples/minimal --resource-code 10
+#   → dist/resources/<sku>-<target>/resource-c<code>.zip + resource.json
+#   → dist/update.json 的 resource / resources 字段；客户端用 resourceUpdater 检查下载替换后 reload
+node pack/build.js --app examples/minimal --no-resource  # 关闭资源包生成
 
 node pack/sign.js --verify <bundle>
 node pack/telemetry-report.js --dir <telemetryDir> --min-samples 385

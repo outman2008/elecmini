@@ -172,6 +172,22 @@ test('BrowserWindow getBounds 同步读镜像', () => {
   assert.deepStrictEqual(w.getBounds(), { x: 10, y: 20, width: 300, height: 200 });
 });
 
+test('webContents.reload 重新加载当前 URL（资源热更新不重启生效）', async () => {
+  const { BrowserWindow } = require('./browser-window');
+  const w = new BrowserWindow({});
+  // 设置镜像 url，模拟当前页面地址
+  store.getWindow(w.id).url = 'http://127.0.0.1:12345/index.html';
+  const ok = await w.webContents.reload();
+  assert.strictEqual(ok, true);
+  assert.ok(
+    calls.find(
+      (x) => x.m === 'window:loadUrl' && x.p.winId === w.id && x.p.url === 'http://127.0.0.1:12345/index.html',
+    ),
+    'reload 应重新加载当前 URL',
+  );
+  assert.strictEqual(await w.webContents.reloadIgnoringCache(), true, 'reloadIgnoringCache 别名应可用');
+});
+
 // ---------------- app ----------------
 test('app.getName/getVersion 返回稳定值', () => {
   const { app } = require('../electron.js');
@@ -530,6 +546,122 @@ test('Tray.setContextMenu 可由 host tray:menu 事件触发 click', () => {
   emitRpc('tray:menu', { id: tray._id, commandId: 'Quit' });
   assert.strictEqual(clicked, 11, '托盘菜单 click 未触发');
   tray.destroy();
+});
+
+// ---------------- resourceUpdater（资源热更新）----------------
+test('resourceUpdater 检查：resourceCode 更大才提示可用', async () => {
+  const { ResourceUpdater } = require('./resource-updater');
+  const u = new ResourceUpdater();
+  u._explicitCode = 5;
+  u.setFeedURL('https://example.test/update.json');
+  u._setTransport(async () => ({ resource: { resourceCode: 10, version: '2.0.0', sku: 'slim' } }));
+  let available = 0;
+  u.on('resource-available', () => available++);
+  const r = await u.checkForResourceUpdates();
+  assert.ok(r && r.updateInfo.resourceCode === 10 && available === 1);
+  // code 不更大 -> 不可用
+  u._explicitCode = 10;
+  const r2 = await u.checkForResourceUpdates();
+  assert.strictEqual(r2, null);
+});
+
+test('resourceUpdater 下载 zip -> 验签 -> 原子替换 app/（不重启）', async () => {
+  const { ResourceUpdater } = require('./resource-updater');
+  const resource = require('../../pack/resource.js');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-resupd-'));
+  const appDir = path.join(tmp, 'app');
+  fs.mkdirSync(appDir, { recursive: true });
+  fs.writeFileSync(path.join(appDir, 'index.html'), '<h1>v1</h1>\n');
+
+  // v2 资源：独立目录
+  const v2 = path.join(tmp, 'v2');
+  fs.mkdirSync(v2, { recursive: true });
+  fs.writeFileSync(path.join(v2, 'index.html'), '<h1>v2</h1>\n');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const pub = publicKey.export({ type: 'spki', format: 'pem' });
+  const mf = resource.generateResourceManifest(v2, 10, { version: '2.0.0', sku: 'slim', privateKey });
+  const zr = resource.buildResourceZip(v2, mf);
+
+  const release = {
+    resource: {
+      resourceCode: 10,
+      version: '2.0.0',
+      sku: 'slim',
+      file: 'res.zip',
+      sha256: zr.sha256,
+      bundleSha256: mf.bundleSha256,
+      manifest: 'resource.json',
+    },
+  };
+  process.env.ELECMINI_UPDATE_PUBKEY = pub;
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = appDir;
+  try {
+    const u = new ResourceUpdater();
+    u._explicitCode = 5;
+    u.setFeedURL('https://example.test/update.json');
+    u._setTransport(async (url) => {
+      if (url === 'https://example.test/update.json') return JSON.stringify(release);
+      if (url === 'https://example.test/res.zip') return zr.zip;
+      if (url === 'https://example.test/resource.json') return JSON.stringify(mf);
+      throw new Error('unexpected url ' + url);
+    });
+    let applied = null;
+    u.on('resource-applied', (i) => (applied = i));
+    await u.checkForResourceUpdates();
+    await u.downloadResourceUpdate();
+    const r = u.applyResource();
+    assert.ok(r.ok, '替换应成功');
+    assert.strictEqual(fs.readFileSync(path.join(appDir, 'index.html'), 'utf8'), '<h1>v2</h1>\n', 'app/ 应更新到 v2');
+    assert.ok(fs.existsSync(path.join(appDir, 'resource.json')), '应写入资源版本清单');
+    assert.ok(applied, '应发出 resource-applied 事件');
+  } finally {
+    ctx.appDir = savedAppDir;
+    delete process.env.ELECMINI_UPDATE_PUBKEY;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resourceUpdater 替换失败时回滚，app/ 保持原样', () => {
+  const { ResourceUpdater } = require('./resource-updater');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'elecmini-resrb-'));
+  const appDir = path.join(tmp, 'app');
+  fs.mkdirSync(appDir, { recursive: true });
+  fs.writeFileSync(path.join(appDir, 'index.html'), '<h1>v1</h1>\n');
+  const staging = path.join(tmp, 'stage');
+  fs.mkdirSync(staging, { recursive: true });
+  fs.writeFileSync(path.join(staging, 'index.html'), '<h1>v2</h1>\n');
+
+  const ctx = require('../context').get();
+  const savedAppDir = ctx.appDir;
+  ctx.appDir = appDir;
+  process.env.ELECMINI_RESOURCE_FAIL = '1';
+  try {
+    const u = new ResourceUpdater();
+    u._stagingDir = staging;
+    u._resourceManifest = { resourceCode: 10 };
+    u.on('error', () => {}); // EventEmitter 无 error 监听会抛错
+    const r = u.applyResource();
+    assert.strictEqual(r.ok, false, '替换应失败');
+    assert.strictEqual(fs.readFileSync(path.join(appDir, 'index.html'), 'utf8'), '<h1>v1</h1>\n', '应回滚到 v1');
+  } finally {
+    ctx.appDir = savedAppDir;
+    delete process.env.ELECMINI_RESOURCE_FAIL;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('electron.js 导出 resourceUpdater', () => {
+  const e = require('../electron.js');
+  assert.ok(e.resourceUpdater && typeof e.resourceUpdater.checkForResourceUpdates === 'function');
 });
 
 // ---------------- runner ----------------

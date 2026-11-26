@@ -79,6 +79,9 @@ run "增量更新器自测" node pack/delta.js --self-test
 # 5.2.1) ZIP 容器自测（差分包用标准 zip 封装，绕开冷门 .diff 扩展名）
 run "ZIP 容器自测" node pack/zip.js --self-test
 
+# 5.2.2) 资源包工具自测（独立 resourceCode + Ed25519 签名 + 原子替换 + 路径穿越防护）
+run "资源包工具自测" node pack/resource.js --self-test
+
 # 5.5) P3-C 签名脚本自测（命令构造正确性）
 run "签名脚本自测" node pack/sign.js --self-test
 
