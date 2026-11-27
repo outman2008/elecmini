@@ -109,8 +109,14 @@ class UpdaterUI extends EventEmitter {
     // 5) 有 feedURL 且开启自动检查时，启动后静默检查一次
     if (this._opts.autoCheck) {
       const au = this._auto();
-      if (au && au.getFeedURL && au.getFeedURL()) {
+      const ru = this._res();
+      if (au && typeof au.getFeedURL === 'function' && au.getFeedURL()) {
         setTimeout(() => au.checkForUpdates().catch(() => {}), 0);
+      }
+      // 资源热更新与整包共用 feedURL（ELECMINI_UPDATE_URL）。此前 autoCheck 只查整包，
+      // resource-available 永远不会触发，热更新只能靠手工调用 checkForResourceUpdates()。
+      if (ru && ru.feedURL) {
+        setTimeout(() => ru.checkForResourceUpdates().catch(() => {}), 0);
       }
     }
     return this;

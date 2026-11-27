@@ -218,7 +218,8 @@ const UPDATER_UI_CLIENT_JS = String.raw`
   }
 
   if (ipc && typeof ipc.on === 'function') {
-    ipc.on(CH, function (next) { setState(next || {}); });
+    // Electron 标准为 (event, payload)；ElecMini 旧版只传 payload 一个参数，两种都兼容。
+    ipc.on(CH, function (arg1, arg2) { setState((arg2 || arg1) || {}); });
   }
   // DOM 就绪后再挂载（initScript 在 document_start 执行，body 可能还不存在）
   function boot() { if (state.phase !== 'idle') ensureHost(); }

@@ -170,6 +170,20 @@ test('客户端脚本语法合法', () => {
   new vm.Script(UPDATER_UI_CLIENT_JS, { filename: 'updater-ui-client.js' });
 });
 
+test('渲染层 ipc 回调兼容 Electron (event, payload) 与 ElecMini 单参数', () => {
+  const d = makeDom();
+  const handler = d.listeners['__elecmini_updater_ui__'];
+  assert.strictEqual(typeof handler, 'function', '注册了状态通道监听');
+  // Electron 标准：第一个参数是 event，payload 在第二个
+  handler({ sender: {} }, { phase: 'available', version: '9.9.9' });
+  assert.strictEqual(d.api.getState().phase, 'available');
+  assert.strictEqual(d.api.getState().version, '9.9.9');
+  // ElecMini 旧版：只回传 payload 一个参数
+  handler({ phase: 'ready', version: '8.8.8' });
+  assert.strictEqual(d.api.getState().phase, 'ready');
+  assert.strictEqual(d.api.getState().version, '8.8.8');
+});
+
 test('idle 不挂载 UI', () => {
   const d = makeDom();
   assert.strictEqual(d.api.getState().phase, 'idle');
@@ -268,6 +282,43 @@ test('资源事件自动热更新并发 applied', async () => {
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(updaterUI._state.phase, 'applied', '自动应用后为 applied');
   updaterUI.disable();
+});
+
+test('autoCheck 同时检查整包与资源热更新', async () => {
+  makeCtx();
+  const { updaterUI } = require('./modules/updater-ui');
+  const { au, ru } = resetUpdaters();
+  const orig = {
+    getFeedURL: au.getFeedURL,
+    checkForUpdates: au.checkForUpdates,
+    feedURL: ru.feedURL,
+    checkForResourceUpdates: ru.checkForResourceUpdates,
+  };
+  let auCalls = 0;
+  let ruCalls = 0;
+  au.getFeedURL = () => 'http://127.0.0.1:1/update.json';
+  au.checkForUpdates = async () => {
+    auCalls++;
+    return null;
+  };
+  ru.feedURL = 'http://127.0.0.1:1/update.json';
+  ru.checkForResourceUpdates = async () => {
+    ruCalls++;
+    return null;
+  };
+  try {
+    updaterUI.disable();
+    updaterUI.enable({ autoCheck: true });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(auCalls, 1, '检查了整包更新');
+    assert.strictEqual(ruCalls, 1, '同时检查了资源热更新');
+  } finally {
+    updaterUI.disable();
+    au.getFeedURL = orig.getFeedURL;
+    au.checkForUpdates = orig.checkForUpdates;
+    ru.feedURL = orig.feedURL;
+    ru.checkForResourceUpdates = orig.checkForResourceUpdates;
+  }
 });
 
 test('禁用开关与 configure 生效', () => {
