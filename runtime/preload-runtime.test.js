@@ -60,4 +60,15 @@ ok('未支持模块给出明确错误', () => {
   assert.throws(() => req('fs'), /不支持 require/);
 });
 
-console.log(`[preload-runtime] PASS=${pass}/6`);
+ok('ipcRenderer.on 回调符合 Electron (event, payload) 签名', () => {
+  const ipc = req('electron').ipcRenderer;
+  let received = null;
+  ipc.on('probe:electron-signature', (event, payload) => { received = { event, payload }; });
+  sandbox.window.__elecminiIpcPush('probe:electron-signature', { n: 42 }, 7);
+  assert.ok(received, '回调未被调用');
+  assert.strictEqual(received.payload.n, 42, 'payload 必须是第二个参数');
+  assert.strictEqual(received.event.sender.id, 7, 'event.sender.id 应来自 host winId');
+  assert.strictEqual(typeof received.event.reply, 'function', 'event.reply 应可用');
+});
+
+console.log(`[preload-runtime] PASS=${pass}/7`);

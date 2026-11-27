@@ -769,10 +769,12 @@ fn main() {
                             let win_id = params.get("winId").and_then(Value::as_u64).unwrap_or(0) as u32;
                             let channel = params.get("channel").and_then(Value::as_str).unwrap_or("");
                             let payload = params.get("payload").cloned().unwrap_or(json!(null));
+                            // 第三个参数 winId 供渲染层构造 Electron 风格的 event.sender.id
                             let script = format!(
-                                "window.__elecminiIpcPush({}, {});",
+                                "window.__elecminiIpcPush({}, {}, {});",
                                 serde_json::to_string(channel).unwrap_or_else(|_| "\"\"".into()),
-                                serde_json::to_string(&payload).unwrap_or_else(|_| "null".into())
+                                serde_json::to_string(&payload).unwrap_or_else(|_| "null".into()),
+                                win_id
                             );
                             if let Some(wv) = webviews.get(&win_id) { let _ = wv.evaluate_script(&script); }
                             if !notify { respond(&out, id, json!({ "ok": true })); }

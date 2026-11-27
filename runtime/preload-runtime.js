@@ -95,9 +95,18 @@ const RUNTIME_JS = String.raw`
     else p.reject(new Error((result && result.__error) || 'ipc error'));
   };
 
-  window.__elecminiIpcPush = function (channel, payload) {
+  window.__elecminiIpcPush = function (channel, payload, senderId) {
     var list = listeners[channel] || [];
-    for (var i = 0; i < list.length; i++) { try { list[i](Codec.decode(payload)); } catch (e) {} }
+    // Electron 约定：回调第一个参数是 event（含 sender），其后才是 IPC payload。
+    // 之前只传 payload，导致按标准写的 (_event, payload) 回调永久拿到 undefined。
+    var event = {
+      sender: { id: senderId === undefined ? 0 : senderId },
+      reply: function (replyChannel) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        post({ kind: 'send', channel: replyChannel, payload: Codec.encode(args.length === 1 ? args[0] : args) });
+      }
+    };
+    for (var i = 0; i < list.length; i++) { try { list[i](event, Codec.decode(payload)); } catch (e) {} }
   };
 
   function post(obj) { window.ipc.postMessage(JSON.stringify(obj)); }
