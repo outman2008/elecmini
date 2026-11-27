@@ -27,8 +27,10 @@ function walk(dir, acc) {
     if (SKIP_DIRS.has(ent.name)) continue;
     const rel = path.join(dir, ent.name);
     const full = path.join(ROOT, rel);
+    // 统一用正斜杠作为相对路径，跨平台（Windows path.join 会产生反斜杠）与 baseline 键一致
+    const key = rel.split(path.sep).join('/');
     if (ent.isDirectory()) walk(rel, acc);
-    else if (ent.isFile() && ent.name.endsWith('.js')) acc.push(rel);
+    else if (ent.isFile() && ent.name.endsWith('.js')) acc.push(key);
   }
 }
 
@@ -37,7 +39,10 @@ function walk(dir, acc) {
   for (const d of SCAN_DIRS) walk(d, files);
   files.sort();
 
-  const baseline = fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')) : {};
+  const rawBaseline = fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')) : {};
+  // 兼容历史 baseline 里的反斜杠键（Windows 上刷新生成），统一成正斜杠再比对
+  const baseline = {};
+  for (const [k, v] of Object.entries(rawBaseline)) baseline[k.split('\\').join('/')] = v;
   const newBaseline = {};
   const violations = [];
   const tightened = [];
