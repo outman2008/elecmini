@@ -46,11 +46,13 @@ function walk(dir, acc) {
   for (const rel of files) {
     const full = path.join(ROOT, rel);
     const src = fs.readFileSync(full, 'utf8');
-    const hash = crypto.createHash('sha256').update(src).digest('hex');
+    // Normalize CRLF -> LF so Windows checkouts hash identically to CI (LF) checkouts.
+    const normalized = src.replace(/\r\n/g, '\n');
+    const hash = crypto.createHash('sha256').update(normalized).digest('hex');
     if (!config) config = (await prettier.resolveConfig(full)) || {};
     let compliant;
     try {
-      compliant = await prettier.check(src, { ...config, filepath: full });
+      compliant = await prettier.check(normalized, { ...config, filepath: full });
     } catch (e) {
       violations.push(`${rel} (解析失败: ${String(e.message).split('\n')[0]})`);
       continue;

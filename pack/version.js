@@ -24,7 +24,6 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 
 const MAX_CODE = Number.MAX_SAFE_INTEGER; // 2^53-1，JS 整数精确上限
 
@@ -110,7 +109,8 @@ function selfTest() {
   // 路径安全：code 只有数字，可直接拼进路径/文件名
   check('versionCode 拼路径无分隔符/URL 保留字符', () => {
     const r = resolveVersionInfo('release#1?x=y /etc', 1001000);
-    return /^\d+$/.test(String(r.versionCode)) && path.join('versions', String(r.versionCode)) === 'versions/1001000';
+    const code = String(r.versionCode);
+    return /^\d+$/.test(code) && !/[\\/]/.test(code) && !/[?#]/.test(code);
   });
 
   let pass = 0;

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-27
+
+Feature release: zero-code automatic update UI, full/resource delta updates, and IPC/tray fixes verified on the OpenChamber migration.
+
 ### Added
 
 - **Silent auto-download + cancellable downloads**: `autoDownload`/`autoApplyResource` are on by default, so updates download without user confirmation; `silent: true` even skips the "发现新版本" card and goes straight to progress (zero clicks). A "停止下载" button is always present during download — `autoUpdater.cancelDownload()` / `resourceUpdater.cancelDownload()` now truly abort the in-flight HTTPS request (`req.destroy()` + cancel flag checked at every download checkpoint), emit `download-cancelled` (never `error`), and apply nothing. The delta-rebuild inner catch was fixed so a cancel cannot be swallowed into a full-download fallback. UI adds a `stopped` phase with retry. (modules 41/41, updater-ui 17/17; real-Chromium click emits `{action:'stop'}`.)
@@ -20,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Windows CI parity**: the version self-test no longer hard-codes POSIX `/` path separators (`path.join` emits `\` on Windows), and the Prettier ratchet normalizes CRLF before hashing/checking so Windows checkouts match Linux CI. The historical-format baseline was refreshed for the current files. (quick CI 19/19.)
 - **Tray menu clicks (OpenChamber migration)**: the host emits `tray:menu` with `commandId`, but the JS shim only subscribed to `tray:click`, so tray `Menu.buildFromTemplate` `click` callbacks (e.g. OpenChamber's "Open"/"Quit") never fired. `Tray.setContextMenu` now retains template items and falls back to `label` as the command id when no explicit `id` is set (matching host-side behavior); `bindTrayEvents` dispatches `tray:menu` back to the matching item's `click`. Regression test added in `runtime/modules/modules.test.js` (26/26).
 - **Tray icon dataURL decoding**: `TrayManager::set_image` fed raw PNG bytes to `Icon::from_rgba`, producing a corrupted icon while silently succeeding whenever the byte count happened to match a guessed size. It now decodes PNG/ICO via `image 0.25` before RGBA conversion. Added Rust unit tests for a generated 16x16 PNG data URL and malformed inputs (6/6 total).
 - Verified on Windows 11 / WebView2 133: gate L0, diff contract 42/42, P1/P2 E2E, S4 7/7, DevTools 4/4, security suite 22/22, and an OpenChamber `slim-win32-x64` rebuild (17664 files, SHA256 all match). See `docs/acceptance/Windows-v1.1.0-适配验证.md`.
